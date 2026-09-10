@@ -1,0 +1,58 @@
+name: realtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "realtime/**"
+      - ".github/workflows/realtime.yml"
+  pull_request:
+    paths:
+      - "realtime/**"
+      - ".github/workflows/realtime.yml"
+
+concurrency:
+  group: realtime-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: realtime
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+          cache-dependency-path: realtime/go.sum
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: realtime
+
+      - name: Test (race)
+        run: go test -race ./...
+
+      - name: Build
+        run: go build ./...
+
+  # Phase 1+: Postgres service container + golang-migrate up/down, docker build → GHCR,
+  # main → flyctl deploy (staging → promote). See docs/PLAN.md §七.

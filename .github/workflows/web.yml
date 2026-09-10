@@ -1,0 +1,61 @@
+name: web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/web.yml"
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter web typecheck
+
+      - name: Lint
+        run: pnpm --filter web lint
+
+      - name: Test
+        run: pnpm --filter web test
+
+      - name: Build
+        run: pnpm --filter web build
+
+      # Bundle size is a known Phase 0 issue (Babylon barrel import, ~6 MB / 1.35 MB gz).
+      # This step only reports; turn it into a hard budget once deep imports / manualChunks land.
+      # See docs/PLAN.md §七 "bundle size budget" and §三 Phase 0 現況 item 5.
+      - name: Bundle size report
+        run: |
+          echo "### web bundle size" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          du -sh web/dist >> "$GITHUB_STEP_SUMMARY"
+          find web/dist/assets -name '*.js' -printf '%s\t%p\n' | sort -rn | head -10 \
+            | awk '{ printf "%8.1f KB  %s\n", $1/1024, $2 }' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

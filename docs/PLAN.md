@@ -6,6 +6,9 @@
 > **進度紀錄**
 > - 2026-09-09：完成初版計畫（3D / Babylon.js、Go realtime、LiveKit Cloud、CI/CD、AI Host + 召喚夥伴 + 規則 NPC）。
 > - 2026-09-09：**Phase 0 開工，骨架大致完成（待瀏覽器實測）**。詳見下方「Phase 0 現況」。
+> - 2026-09-10：initial commit（`03c192f`，35 檔）、`.gitattributes`（LF 正規化）、
+>   根 `README.md`（本機啟動步驟）、`.github/workflows/` 兩條 CI pipeline（web / realtime）。
+>   Phase 0 收尾剩：**瀏覽器實測驗收**、部署（Vercel / Fly.io，待帳號 secrets）。
 
 ## Context（為什麼做這個）
 
@@ -152,8 +155,9 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 - `realtime/`（Go）：WebSocket server，一個寫死的 room；收 `move`、以 tick 廣播所有人 transform。
 - 遠端 avatar 用膠囊或簡單模型，套插值 + walk 動作。
 - render-on-demand：有人移動/動畫時跑 render loop，全體靜止時凍結。
-- 部署：web → Vercel，Go → Fly.io。
-- **CI/CD 同步建立**：lint + typecheck + test + build + 自動部署三條最小 pipeline（見 §七）。
+- 部署：web → Vercel，Go → Fly.io。← 未做（待帳號 secrets）
+- **CI/CD 同步建立**：lint + typecheck + test + build ← ✅ 已建（`.github/workflows/{web,realtime}.yml`）；
+  自動部署待 Vercel / Fly.io 帳號。
 - **驗收**：兩個瀏覽器視窗看到彼此 3D avatar 平順走動；可旋轉/縮放場景、切第一/三人稱。
 
 #### Phase 0 現況（2026-09-09，日終）
@@ -178,15 +182,25 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   `pnpm typecheck / lint / test(5 pass) / build` 全綠。
 - 過程中修掉一個 bug：`ServeWS` 的 welcome/snapshot 順序競態（welcome 現在在加入 room 前先入佇列）。
 
-**尚未完成（Phase 0 收尾項，明天接續）**
+**尚未完成（Phase 0 收尾項）**
 1. **瀏覽器實測驗收**：真的開兩個分頁確認 avatar 移動平順、互相看得到、旋轉/縮放、V 切第一/三人稱。
    （本機 5173 埠被無關專案 `D:\tank-game-react` 的 vite 佔用 → 用別的埠或先關掉它。）
-   啟動：`cd realtime && go run ./cmd/server`；另開 `cd web && pnpm dev`。
-2. `.github/workflows/`：web 與 realtime 兩條 CI pipeline（見 §七）尚未寫。
-3. 部署（Vercel / Fly.io）未做——需帳號與 secrets。
-4. 專案根 `README.md`（本機啟動步驟）未寫。
-5. 已知：前端 bundle 6.1 MB / gz 1.35 MB（Babylon barrel import）→ 之後改 deep import 或
-   `manualChunks`（§七 bundle budget，Phase 2–3）。
+   啟動：`cd realtime && go run ./cmd/server`；另開 `pnpm dev`。← **唯一還沒過的驗收關卡**
+2. 部署（Vercel / Fly.io）未做——需帳號與 secrets。
+3. 已知：前端 bundle 6.1 MB / gz 1.35 MB（Babylon barrel import）→ 之後改 deep import 或
+   `manualChunks`（§七 bundle budget，Phase 2–3）。CI 目前只「報告」大小不擋。
+
+**已完成（2026-09-10 補）**
+- initial commit `03c192f`（35 檔，build artifact 已 gitignore）。
+- `.gitattributes`：`* text=auto eol=lf` + 常見二進位副檔名，消除 Windows CRLF 警告、CI 一致。
+- 根 `README.md`：需求版本、`pnpm install` → 兩終端啟動、環境變數表（`ADDR` / `TICK_RATE`
+  / `VITE_REALTIME_URL`）、開發指令、結構、Roadmap 摘要。
+- `.github/workflows/web.yml`：PR + main，`web/**` 與 lockfile 觸發；pnpm/action-setup +
+  setup-node 20（pnpm cache）→ `pnpm install --frozen-lockfile` → typecheck → lint → test →
+  build → bundle size **報告**（寫入 step summary，尚非硬 budget）。
+- `.github/workflows/realtime.yml`：PR + main，`realtime/**` 觸發；setup-go 1.21（go.sum cache）
+  → gofmt 檢查 → `go vet` → golangci-lint → `go test -race` → `go build`。
+  Postgres/migrate、docker→GHCR、fly deploy 以註解留待 Phase 1+。
 
 ### Phase 1 — Proximity 媒體 + 互動 MVP（約 3–4 週）
 - 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。
