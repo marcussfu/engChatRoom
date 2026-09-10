@@ -8,7 +8,12 @@
 > - 2026-09-09：**Phase 0 開工，骨架大致完成（待瀏覽器實測）**。詳見下方「Phase 0 現況」。
 > - 2026-09-10：initial commit（`03c192f`，35 檔）、`.gitattributes`（LF 正規化）、
 >   根 `README.md`（本機啟動步驟）、`.github/workflows/` 兩條 CI pipeline（web / realtime）。
->   Phase 0 收尾剩：**瀏覽器實測驗收**、部署（Vercel / Fly.io，待帳號 secrets）。
+>   首次瀏覽器實測：其他驗收項都過，但「兩個 avatar 互相看得到」失敗（只顯示一個）。
+>   已定位並修正（commit `fb4c29a`）：client 連線後未上報 spawn 座標 → server 對閒置玩家
+>   記成世界原點 → 別的分頁把人畫在原點疊在一起。詳見下方「Phase 0 現況」。
+>   commit：`03c192f` → `b798dd5`（CI/README）→ `fb4c29a`（spawn 同步修正）。
+>   **明天第一件事**：重啟 server + 兩分頁 F12 重測，確認 `[net] snapshot` 印出 2 筆不同座標、
+>   看得到另一顆膠囊；過了就收掉 Phase 0，開 Phase 1（LiveKit）。部署（Vercel / Fly.io）待帳號 secrets。
 
 ## Context（為什麼做這個）
 
