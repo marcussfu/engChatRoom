@@ -1,0 +1,16 @@
+{
+  "name": "engchatroom",
+  "version": "0.0.0",
+  "private": true,
+  "description": "類 SpotVirtual 的 3D 英語口說練習虛擬咖啡廳（monorepo root）",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "typecheck": "pnpm --filter web typecheck",
+    "lint": "pnpm --filter web lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

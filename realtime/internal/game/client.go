@@ -1,0 +1,118 @@
+package game
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/marcussfu/engchatroom/realtime/internal/protocol"
+)
+
+const (
+	readLimitBytes = 1 << 15 // 32 KiB, plenty for a small JSON input message
+	sendQueue      = 16      // dropped-frame tolerant: snapshots are idempotent
+	writeTimeout   = 5 * time.Second
+)
+
+// Client is one connected browser. Its state is owned by the Room; the Room's
+// mutex guards every field touched from more than one goroutine.
+type Client struct {
+	conn *websocket.Conn
+	room *Room
+	send chan []byte
+
+	// Guarded by room.mu.
+	state protocol.PlayerState
+}
+
+func newClient(conn *websocket.Conn, room *Room, id, color string) *Client {
+	return &Client{
+		conn: conn,
+		room: room,
+		send: make(chan []byte, sendQueue),
+		state: protocol.PlayerState{
+			ID:    id,
+			Name:  "guest",
+			Anim:  protocol.AnimIdle,
+			Color: color,
+		},
+	}
+}
+
+// readPump parses inbound messages and updates this client's state. It returns
+// when the connection closes or errors.
+func (c *Client) readPump(ctx context.Context) {
+	c.conn.SetReadLimit(readLimitBytes)
+	for {
+		_, data, err := c.conn.Read(ctx)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) && websocket.CloseStatus(err) == -1 {
+				log.Printf("client %s read: %v", c.state.ID, err)
+			}
+			return
+		}
+
+		var msg protocol.ClientMsg
+		if err := json.Unmarshal(data, &msg); err != nil {
+			log.Printf("client %s bad json: %v", c.state.ID, err)
+			continue
+		}
+
+		switch msg.T {
+		case "join":
+			c.room.mu.Lock()
+			if msg.Name != "" {
+				c.state.Name = clampName(msg.Name)
+			}
+			c.room.dirty = true
+			c.room.mu.Unlock()
+		case "input":
+			c.room.mu.Lock()
+			c.state.X = msg.X
+			c.state.Z = msg.Z
+			c.state.Yaw = msg.Yaw
+			if msg.Anim == protocol.AnimWalk {
+				c.state.Anim = protocol.AnimWalk
+			} else {
+				c.state.Anim = protocol.AnimIdle
+			}
+			c.room.dirty = true
+			c.room.mu.Unlock()
+		default:
+			// ignore unknown message types for forward-compat
+		}
+	}
+}
+
+// writePump drains the send channel to the socket. It is the only goroutine
+// that writes to c.conn.
+func (c *Client) writePump(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case buf, ok := <-c.send:
+			if !ok {
+				return
+			}
+			wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err := c.conn.Write(wctx, websocket.MessageText, buf)
+			cancel()
+			if err != nil {
+				return
+			}
+		}
+	}
+}
+
+func clampName(s string) string {
+	const max = 24
+	r := []rune(s)
+	if len(r) > max {
+		r = r[:max]
+	}
+	return string(r)
+}
