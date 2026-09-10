@@ -70,16 +70,29 @@ export class Game {
         onWelcome: (id, _tick, color) => {
           this.remotes.setSelfId(id);
           this.local.recolor(color);
+          // Tell the server where we spawned right away — otherwise our
+          // authoritative state stays at the world origin until we first move,
+          // and every other client draws us stacked at (0,0,0).
+          this.sendInput();
+          this.lastSendAt = performance.now();
+          if (import.meta.env.DEV) console.info("[net] welcome", { id, color });
           this.bump();
         },
         onSnapshot: (m) => {
           this.remotes.applySnapshot(m.players);
           this.opts.onOnlineCount?.(m.players.length);
+          if (import.meta.env.DEV) {
+            console.info(
+              "[net] snapshot",
+              m.players.map((p) => `${p.id}@(${p.x.toFixed(1)},${p.z.toFixed(1)})`),
+            );
+          }
           this.bump();
         },
         onLeave: (id) => {
           this.remotes.remove(id);
           this.opts.onOnlineCount?.(this.remotes.count + 1);
+          if (import.meta.env.DEV) console.info("[net] leave", id);
           this.bump();
         },
       },

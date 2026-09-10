@@ -186,6 +186,12 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 1. **瀏覽器實測驗收**：真的開兩個分頁確認 avatar 移動平順、互相看得到、旋轉/縮放、V 切第一/三人稱。
    （本機 5173 埠被無關專案 `D:\tank-game-react` 的 vite 佔用 → 用別的埠或先關掉它。）
    啟動：`cd realtime && go run ./cmd/server`；另開 `pnpm dev`。← **唯一還沒過的驗收關卡**
+   - 2026-09-10 首次實測：其他項都 OK，但「兩個 avatar 互相看得到」失敗，只顯示一個。
+     **原因**：本地 avatar spawn 在 `(0,0,6)`，但 client 只在「移動時」才送座標，
+     所以 server 對閒置玩家一律記成 `(0,0,0)`，別的分頁就把你畫在世界原點、疊在一起。
+     **已修**：(a) client 收到 `welcome` 後立刻送一次 `input` 把 spawn 座標上報；
+     (b) server `newClient` 預設 `Z=spawnZ(6)` 對齊 client；(c) DEV 下 `welcome/snapshot/leave`
+     印 console 方便回報。待重新實測確認。
 2. 部署（Vercel / Fly.io）未做——需帳號與 secrets。
 3. 已知：前端 bundle 6.1 MB / gz 1.35 MB（Babylon barrel import）→ 之後改 deep import 或
    `manualChunks`（§七 bundle budget，Phase 2–3）。CI 目前只「報告」大小不擋。
