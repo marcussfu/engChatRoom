@@ -17,6 +17,10 @@
 > - 2026-09-11：**Phase 0 驗收通過** ✅ —— 兩分頁互相看得到、各自移動平順。
 >   **Phase 0 收尾（骨架部分）完成**，開始 **Phase 1**（LiveKit proximity 媒體 + 坐下 + 房間聊天）。
 >   部署（Vercel / Fly.io）仍待帳號 secrets，先不擋 Phase 1 開工。
+>   同日接續：Phase 1 先做**不需要外部帳號**的切片並完成 —— 對話區偵測（zone）、點椅子坐下
+>   （anchor/rotator 座位、佔位擋重複坐）、房間文字聊天（記憶體版）。全綠（web 4 項 + realtime
+>   gofmt/vet/build/test 共 6 個測試）。**LiveKit Cloud 帳號 + Postgres** 仍是 Phase 1 剩餘項的前提。
+>   詳見下方「Phase 1 現況」。
 
 ## Context（為什麼做這個）
 
@@ -216,15 +220,41 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   Postgres/migrate、docker→GHCR、fly deploy 以註解留待 Phase 1+。
 
 ### Phase 1 — Proximity 媒體 + 互動 MVP（約 3–4 週）
-- 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。
-- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。
+- 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。← 未做（待 LiveKit Cloud 帳號）
+- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← 未做（同上）
 - **對話區**：場景放 box 觸發體；進入顯示提示；同 zone/半徑內才 subscribe，音量隨距離。
-- 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。
-- 點椅子坐下：吸附 seat 錨點 + sit 動作。
-- 房間文字聊天（走同一條 WS，寫入 Postgres）。
-- 麥克風/鏡頭開關、裝置選擇、Headphones Mode。
+  ← ✅ zone 偵測 + zoneId 同步已完成（見下）；「subscribe 音量隨距離」待接 LiveKit。
+- 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← 未做（待 LiveKit）
+- 點椅子坐下：吸附 seat 錨點 + sit 動作。← ✅ 吸附+朝向已完成；sit **動作**待有骨架 avatar 才有意義。
+- 房間文字聊天（走同一條 WS，寫入 Postgres）。← ✅ WS 聊天已完成；**Postgres 持久化未做**（先記憶體）。
+- 麥克風/鏡頭開關、裝置選擇、Headphones Mode。← 未做（待 LiveKit）
 - **驗收**：兩人進同一對話區 → 出現視訊、音量隨距離；走出 zone → 斷開；坐下有動作；
-  LiveKit dashboard 看得到 participant/track。
+  LiveKit dashboard 看得到 participant/track。← 待 LiveKit 接上後測。
+
+#### Phase 1 現況（2026-09-11）—— 不需帳號的切片先做完
+
+**已完成並通過檢查**
+- 協定擴充（`protocol.go` / `web/src/net/types.ts` 同步）：`ClientMsg`/`PlayerState` 加
+  `zoneId`、`seatId`；新增 `chat`（client→server）與 `chat`（server→client，含 `name`/`body`/`ts`）。
+- **對話區偵測**：`environment.ts` 每張桌子產生一個 `ZoneMarker`（半徑 1.8m，桌距夠開不重疊）；
+  `Game.frame()` 每幀算所在 zone，變化時透過 `onZone` 通知 UI（HUD 顯示「🗨️ 桌 N 對話區」徽章）
+  並強制立即送一次 `input`（不等節流）。zoneId 現在只用來顯示 + 之後接 LiveKit 的訂閱分組依據。
+- **坐下**：`environment.ts` 每桌回傳兩個 `SeatMarker`（白椅 anchor / 黑椅 rotator，各自朝向桌心的
+  yaw）。點椅子 mesh → `LocalPlayer.sitAt()` 吸附位置+朝向、鎖死移動輸入；再點同一張椅子或點地板
+  → `standUp()`。`RemotePlayers.occupiedSeats()` 擋掉「坐已被佔的椅子」。座位沒有動畫（Phase 0/1
+  用膠囊佔位；sit 動作要等 Ready Player Me/Mixamo 骨架進來才有意義，見 PLAN §一.A）。
+- **房間文字聊天**：`realtime` 新增 `chat` 訊息類型，走既有 WS、繞過 tick 立即廣播（跟 `leave` 一樣）；
+  純記憶體、無持久化（`clampBody` 限 500 字元）。前端 `ui/Chat.tsx`（訊息列表 + 輸入框，自己的
+  訊息靠右標色）掛在 `App.tsx`，`isTypingTarget` 守門避免打字誤觸 WASD。
+- Go 新增測試：`TestChatIsBroadcastToAll`、`TestInputRelaysZoneAndSeat`（連同既有 4 個，共 6 個全過）。
+- 全綠：web `typecheck`/`lint`/`vitest(5)`/`build`；realtime `gofmt`/`vet`/`build`/`test`（6 個）。
+
+**尚未完成（真正需要帳號/決策才能繼續）**
+1. **LiveKit Cloud 帳號**：申請後才能做 `POST /token`、加入 LiveKit room、發佈/訂閱媒體、
+   video billboard、螢幕分享、音量隨距離、Headphones Mode——Phase 1 剩下的都卡在這。
+2. **Postgres**：聊天記錄持久化目前只在記憶體，重啟就消失；需要 docker-compose 起 Postgres +
+   `chat_messages` table + 一支 migration，之後把 `broadcastChat` 順手寫 DB。
+3. 部署（Vercel / Fly.io）——同 Phase 0，待帳號。
 
 ### Phase 2 — 產品化 + 語言交換模式 + 初階 AI
 - Auth（Clerk/Supabase）含 guest；邀請連結落地頁。

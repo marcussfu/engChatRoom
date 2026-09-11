@@ -7,6 +7,7 @@ export interface NetHandlers {
   onWelcome?: (id: string, tickRate: number, color: string) => void;
   onSnapshot?: (msg: Extract<ServerMsg, { t: "snapshot" }>) => void;
   onLeave?: (id: string) => void;
+  onChat?: (msg: Extract<ServerMsg, { t: "chat" }>) => void;
 }
 
 const DEFAULT_URL = "ws://localhost:8787/ws";
@@ -63,6 +64,9 @@ export class Net {
         case "leave":
           this.h.onLeave?.(msg.id);
           break;
+        case "chat":
+          this.h.onChat?.(msg);
+          break;
       }
     };
 
@@ -78,6 +82,12 @@ export class Net {
 
   sendInput(i: Omit<InputMsg, "t">): void {
     this.send({ t: "input", ...i });
+  }
+
+  sendChat(body: string): void {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    this.send({ t: "chat", body: trimmed });
   }
 
   private send(msg: ClientMsg): void {

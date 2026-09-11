@@ -8,9 +8,9 @@ import {
 import "@babylonjs/core/Culling/ray"; // enables scene.pick for click-to-move
 
 import { Net, type ConnStatus } from "../net/socket";
-import type { Anim } from "../net/types";
+import type { Anim, ChatMsg } from "../net/types";
 import { CameraRig } from "./cameraRig";
-import { buildEnvironment } from "./environment";
+import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environment";
 import { LocalPlayer } from "./localPlayer";
 import { RemotePlayers } from "./remotePlayers";
 
@@ -28,6 +28,11 @@ export interface GameOptions {
   onStatus?: (s: ConnStatus) => void;
   onOnlineCount?: (n: number) => void;
   onFirstPerson?: (on: boolean) => void;
+  /** Fires when the local player enters (zone id) or leaves (null) a conversation zone. */
+  onZone?: (zoneId: string | null) => void;
+  onChat?: (msg: ChatMsg) => void;
+  /** Fires once, when the server assigns our connection id. */
+  onSelfId?: (id: string) => void;
 }
 
 /**
@@ -43,10 +48,14 @@ export class Game {
   private readonly remotes: RemotePlayers;
   private readonly net: Net;
   private readonly opts: GameOptions;
+  private readonly zones: ZoneMarker[];
+  private readonly seatByMesh = new Map<string, SeatMarker>();
 
   private activityUntil = 0;
   private lastSendAt = 0;
   private lastSentAnim: Anim = "idle";
+  private zoneId: string | undefined;
+  private forceSend = false;
   private disposed = false;
 
   constructor(canvas: HTMLCanvasElement, opts: GameOptions) {
@@ -63,6 +72,8 @@ export class Game {
     this.rig = new CameraRig(this.scene, canvas);
     this.local = new LocalPlayer(this.scene, env.tables, "#c8c8c8", env.shadows);
     this.remotes = new RemotePlayers(this.scene, env.shadows);
+    this.zones = env.zones;
+    for (const seat of env.seats) this.seatByMesh.set(`seat${seat.id}`, seat);
 
     this.net = new Net(
       {
@@ -70,6 +81,7 @@ export class Game {
         onWelcome: (id, _tick, color) => {
           this.remotes.setSelfId(id);
           this.local.recolor(color);
+          this.opts.onSelfId?.(id);
           // Tell the server where we spawned right away — otherwise our
           // authoritative state stays at the world origin until we first move,
           // and every other client draws us stacked at (0,0,0).
@@ -95,6 +107,7 @@ export class Game {
           if (import.meta.env.DEV) console.info("[net] leave", id);
           this.bump();
         },
+        onChat: (msg) => this.opts.onChat?.(msg),
       },
       opts.url,
     );
@@ -128,10 +141,19 @@ export class Game {
       dt,
     );
 
-    if (moved) {
+    const zoneId = this.zoneAt(this.local.x, this.local.z);
+    const zoneChanged = zoneId !== this.zoneId;
+    if (zoneChanged) {
+      this.zoneId = zoneId;
+      this.opts.onZone?.(zoneId ?? null);
+    }
+    const mustSend = zoneChanged || this.forceSend;
+    this.forceSend = false;
+
+    if (moved || mustSend) {
       this.bump();
       const animChanged = this.local.animation !== this.lastSentAnim;
-      if (now - this.lastSendAt > SEND_INTERVAL_MS || animChanged) {
+      if (mustSend || animChanged || now - this.lastSendAt > SEND_INTERVAL_MS) {
         this.sendInput();
         this.lastSendAt = now;
       }
@@ -153,7 +175,35 @@ export class Game {
       z: round(this.local.z),
       yaw: round(this.local.heading),
       anim: this.local.animation,
+      zoneId: this.zoneId,
+      seatId: this.local.seatId,
     });
+  }
+
+  sendChat(body: string): void {
+    this.net.sendChat(body);
+  }
+
+  private zoneAt(x: number, z: number): string | undefined {
+    for (const zone of this.zones) {
+      const dx = x - zone.x;
+      const dz = z - zone.z;
+      if (dx * dx + dz * dz <= zone.radius * zone.radius) return zone.id;
+    }
+    return undefined;
+  }
+
+  /** Sit at `seat`, or stand if already sitting there; no-op if someone else
+   * is already sitting there. Always forces an immediate state broadcast. */
+  private trySit(seat: SeatMarker): void {
+    if (this.local.seatId === seat.id) {
+      this.local.standUp();
+    } else if (!this.remotes.occupiedSeats().has(seat.id)) {
+      this.local.sitAt(seat);
+    } else {
+      return;
+    }
+    this.forceSend = true;
   }
 
   private bump(): void {
@@ -196,8 +246,18 @@ export class Game {
     }
     if (info.type === PointerEventTypes.POINTERPICK && !this.rig.firstPerson) {
       const pick = info.pickInfo;
-      if (pick?.hit && pick.pickedMesh?.name === "floor" && pick.pickedPoint) {
-        this.local.setMoveTarget(pick.pickedPoint);
+      const mesh = pick?.hit ? pick.pickedMesh : null;
+      const seat = mesh ? this.seatByMesh.get(mesh.name) : undefined;
+      if (seat) {
+        this.trySit(seat);
+        this.bump();
+      } else if (mesh?.name === "floor" && pick?.pickedPoint) {
+        if (this.local.seatId) {
+          this.local.standUp();
+          this.forceSend = true;
+        } else {
+          this.local.setMoveTarget(pick.pickedPoint);
+        }
         this.bump();
       }
     }

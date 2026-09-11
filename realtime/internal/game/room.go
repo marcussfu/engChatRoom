@@ -112,6 +112,19 @@ func (r *Room) nextColor() string {
 	return color
 }
 
+// broadcastChat fans a room chat message out to every client immediately
+// (like broadcastCtl, it bypasses the tick — chat shouldn't wait for the next
+// snapshot). Messages are not persisted; Phase 1 wires this to Postgres.
+func (r *Room) broadcastChat(id, name, body string) {
+	r.broadcastCtl(protocol.ServerMsg{
+		T:    "chat",
+		ID:   id,
+		Name: name,
+		Body: body,
+		Ts:   time.Now().UnixMilli(),
+	})
+}
+
 // broadcastCtl sends a small control message (e.g. "leave") to every client.
 func (r *Room) broadcastCtl(msg protocol.ServerMsg) {
 	buf, err := json.Marshal(msg)

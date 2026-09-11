@@ -72,6 +72,18 @@ body,
   white-space: nowrap;
 }
 
+.hud__zone {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(46, 194, 107, 0.35);
+  padding: 6px 12px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+
 .hud__cam {
   position: absolute;
   top: 12px;
@@ -87,5 +99,83 @@ body,
   backdrop-filter: blur(4px);
 }
 .hud__cam:hover {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.chat {
+  position: fixed;
+  left: 14px;
+  bottom: 56px;
+  width: min(320px, calc(100vw - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.chat__list {
+  max-height: 34vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.chat__msg {
+  align-self: flex-start;
+  max-width: 90%;
+  background: rgba(0, 0, 0, 0.42);
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  font-size: 12.5px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  word-break: break-word;
+}
+.chat__msg--self {
+  align-self: flex-end;
+  background: rgba(0, 144, 255, 0.5);
+}
+
+.chat__name {
+  font-weight: 600;
+  margin-right: 6px;
+  opacity: 0.85;
+}
+
+.chat__form {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.chat__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 7px 10px;
+  backdrop-filter: blur(4px);
+}
+.chat__input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.chat__send {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  padding: 7px 12px;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+.chat__send:hover {
   background: rgba(0, 0, 0, 0.6);
 }

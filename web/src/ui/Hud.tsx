@@ -4,6 +4,7 @@ interface HudProps {
   status: ConnStatus;
   online: number;
   firstPerson: boolean;
+  zoneLabel: string | null;
   onToggleCam: () => void;
 }
 
@@ -13,7 +14,7 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   closed: "已斷線，重連中…",
 };
 
-export function Hud({ status, online, firstPerson, onToggleCam }: HudProps) {
+export function Hud({ status, online, firstPerson, zoneLabel, onToggleCam }: HudProps) {
   return (
     <div className="hud">
       <div className="hud__status">
@@ -22,12 +23,14 @@ export function Hud({ status, online, firstPerson, onToggleCam }: HudProps) {
         <span>· 線上 {online}</span>
       </div>
 
+      {zoneLabel && <div className="hud__zone">🗨️ {zoneLabel}</div>}
+
       <button className="hud__cam" onClick={onToggleCam}>
         {firstPerson ? "第三人稱 (V)" : "第一人稱 (V)"}
       </button>
 
       <div className="hud__hint">
-        WASD / 方向鍵移動 · 點地板走過去 · 拖曳旋轉 · 滾輪縮放 · V 切換視角
+        WASD / 方向鍵移動 · 點地板走過去 · 點椅子坐下（再點一次站起）· 拖曳旋轉 · 滾輪縮放 · V 切換視角
       </div>
     </div>
   );

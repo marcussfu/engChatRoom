@@ -21,11 +21,40 @@ export interface TableMarker {
   radius: number;
 }
 
+/** One sittable seat: `anchor` = white chair (fixed), `rotator` = black chair
+ * (moves between tables each round in the language-exchange mode, Phase 2). */
+export interface SeatMarker {
+  id: string;
+  table: number;
+  role: "anchor" | "rotator";
+  x: number;
+  z: number;
+  /** Yaw the avatar should face once seated (toward the table). */
+  yaw: number;
+}
+
+/** A conversation zone: everyone inside subscribes to everyone else's media
+ * (docs/PLAN.md §二 "Proximity / zone → 媒體訂閱"). Phase 0 placeholder is one
+ * circular zone per table; real scenes will author arbitrary zone polygons. */
+export interface ZoneMarker {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+}
+
 export interface Environment {
   shadows: ShadowGenerator;
   /** Table centres for cheap avatar keep-out; also where seat anchors land later. */
   tables: TableMarker[];
+  seats: SeatMarker[];
+  zones: ZoneMarker[];
 }
+
+/** Zone radius in metres — bigger than a table's seats, smaller than half the
+ * gap between tables so neighbouring zones don't overlap (see the row/col gap
+ * math below: half of the tighter axis is 2.0 m). */
+const ZONE_RADIUS = 1.8;
 
 /**
  * Phase 0 placeholder "Cafe": floor, two lights with shadows, four walls and a
@@ -85,6 +114,8 @@ export function buildEnvironment(scene: Scene): Environment {
   chairMat.diffuseColor = new Color3(0.9, 0.87, 0.8);
 
   const tables: TableMarker[] = [];
+  const seats: SeatMarker[] = [];
+  const zones: ZoneMarker[] = [];
   const cols = 4;
   const rows = 4;
   const gapX = (ROOM_HALF_X * 2 - 4) / (cols - 1);
@@ -105,13 +136,15 @@ export function buildEnvironment(scene: Scene): Environment {
       top.receiveShadows = true;
       shadows.addShadowCaster(top);
 
-      // one "anchor" (white) and one "rotator" (black) seat per table, ±Z
-      for (const [dz, mat] of [
-        [-0.95, chairMat],
-        [0.95, tableMat],
+      // one "anchor" (white) and one "rotator" (black) seat per table, ±Z,
+      // each facing the table centre.
+      for (const [dz, mat, role] of [
+        [-0.95, chairMat, "anchor"],
+        [0.95, tableMat, "rotator"],
       ] as const) {
+        const id = `${n}${role === "anchor" ? "w" : "b"}`;
         const seat = MeshBuilder.CreateBox(
-          `seat${n}_${dz < 0 ? "w" : "b"}`,
+          `seat${id}`,
           { width: 0.5, height: 0.5, depth: 0.5 },
           scene,
         );
@@ -119,12 +152,15 @@ export function buildEnvironment(scene: Scene): Environment {
         seat.position.set(x, 0.25, z + dz);
         seat.receiveShadows = true;
         shadows.addShadowCaster(seat);
+
+        seats.push({ id, table: n, role, x, z: z + dz, yaw: dz < 0 ? 0 : Math.PI });
       }
 
       tables.push({ n, x, z, radius: 0.95 });
+      zones.push({ id: `table${n}`, x, z, radius: ZONE_RADIUS });
       n++;
     }
   }
 
-  return { shadows, tables };
+  return { shadows, tables, seats, zones };
 }

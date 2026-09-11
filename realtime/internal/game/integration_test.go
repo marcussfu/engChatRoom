@@ -46,6 +46,85 @@ func TestTwoClientsSeeEachOther(t *testing.T) {
 	assertSeesBoth(t, ctx, b, "alice")
 }
 
+// TestChatIsBroadcastToAll and TestInputRelaysZoneAndSeat cover the Phase 1
+// slice: room text chat and zone/seat state riding the existing snapshot.
+func TestChatIsBroadcastToAll(t *testing.T) {
+	room := NewRoom(30)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go room.Run(ctx)
+
+	srv := httptest.NewServer(http.HandlerFunc(room.ServeWS))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	a := dial(t, ctx, url)
+	defer a.CloseNow()
+	b := dial(t, ctx, url)
+	defer b.CloseNow()
+
+	readMsg(t, ctx, a) // welcome
+	readMsg(t, ctx, b) // welcome
+	writeMsg(t, ctx, a, protocol.ClientMsg{T: "join", Name: "alice"})
+	writeMsg(t, ctx, a, protocol.ClientMsg{T: "chat", Body: "hello room"})
+
+	for _, c := range []*websocket.Conn{a, b} {
+		if m := findChat(t, ctx, c); m.Body != "hello room" || m.Name != "alice" {
+			t.Fatalf("chat = %+v, want body=%q name=alice", m, "hello room")
+		}
+	}
+}
+
+func TestInputRelaysZoneAndSeat(t *testing.T) {
+	room := NewRoom(30)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go room.Run(ctx)
+
+	srv := httptest.NewServer(http.HandlerFunc(room.ServeWS))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	a := dial(t, ctx, url)
+	defer a.CloseNow()
+	b := dial(t, ctx, url)
+	defer b.CloseNow()
+
+	aWelcome := readMsg(t, ctx, a)
+	readMsg(t, ctx, b) // welcome
+	writeMsg(t, ctx, a, protocol.ClientMsg{T: "input", ZoneID: "table3", SeatID: "3w"})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		m := readMsg(t, ctx, b)
+		if m.T != "snapshot" {
+			continue
+		}
+		for _, p := range m.Players {
+			if p.ID == aWelcome.ID {
+				if p.ZoneID != "table3" || p.SeatID != "3w" {
+					t.Fatalf("player state = %+v, want zoneId=table3 seatId=3w", p)
+				}
+				return
+			}
+		}
+	}
+	t.Fatal("never saw a's zoneId/seatId in a snapshot")
+}
+
+func findChat(t *testing.T, ctx context.Context, c *websocket.Conn) protocol.ServerMsg {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		m := readMsg(t, ctx, c)
+		if m.T == "chat" {
+			return m
+		}
+	}
+	t.Fatal("never saw a chat message")
+	return protocol.ServerMsg{}
+}
+
 func TestLeaveIsBroadcast(t *testing.T) {
 	room := NewRoom(30)
 	ctx, cancel := context.WithCancel(context.Background())

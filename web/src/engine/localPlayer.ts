@@ -1,7 +1,7 @@
 import { Vector3, type Scene, type ShadowGenerator } from "@babylonjs/core";
 import type { Anim } from "../net/types";
 import { AVATAR_RADIUS, EYE_HEIGHT, createAvatar, setAvatarColor } from "./avatar";
-import { ROOM_HALF_X, ROOM_HALF_Z, type TableMarker } from "./environment";
+import { ROOM_HALF_X, ROOM_HALF_Z, type SeatMarker, type TableMarker } from "./environment";
 import { clamp, shortestAngle } from "./mathUtils";
 
 const SPEED = 3.4; // m/s
@@ -22,6 +22,7 @@ export class LocalPlayer {
   private yaw = 0;
   private anim: Anim = "idle";
   private bodyVisible = true;
+  private seat: SeatMarker | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -47,6 +48,9 @@ export class LocalPlayer {
   get animation(): Anim {
     return this.anim;
   }
+  get seatId(): string | undefined {
+    return this.seat?.id;
+  }
 
   eyePosition(): Vector3 {
     return new Vector3(this.root.position.x, EYE_HEIGHT, this.root.position.z);
@@ -67,6 +71,22 @@ export class LocalPlayer {
 
   setMoveTarget(point: Vector3 | null): void {
     this.target = point ? new Vector3(point.x, 0, point.z) : null;
+  }
+
+  /** Snap into a seat: position/yaw lock to the anchor, movement input ignored
+   * until `standUp()`. */
+  sitAt(seat: SeatMarker): void {
+    this.seat = seat;
+    this.target = null;
+    this.clearKeys();
+    this.root.position.set(seat.x, 0, seat.z);
+    this.yaw = seat.yaw;
+    this.root.rotation.y = this.yaw;
+    this.anim = "idle";
+  }
+
+  standUp(): void {
+    this.seat = null;
   }
 
   setBodyVisible(visible: boolean): void {
@@ -91,6 +111,8 @@ export class LocalPlayer {
     lockYawToCamera: boolean,
     cameraYaw: number,
   ): boolean {
+    if (this.seat) return false; // seated: ignore movement input entirely
+
     const f =
       (anyOf(this.keys, FORWARD_KEYS) ? 1 : 0) - (anyOf(this.keys, BACK_KEYS) ? 1 : 0);
     const r =

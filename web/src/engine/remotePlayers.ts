@@ -12,6 +12,7 @@ interface Remote {
   tz: number;
   tyaw: number;
   dyaw: number;
+  seatId?: string;
 }
 
 /** Other players: created/destroyed from snapshots, smoothed toward the latest
@@ -33,6 +34,16 @@ export class RemotePlayers {
     return this.map.size;
   }
 
+  /** Seat ids currently taken by other players — for the local click-to-sit
+   * occupancy check. */
+  occupiedSeats(): Set<string> {
+    const taken = new Set<string>();
+    for (const r of this.map.values()) {
+      if (r.seatId) taken.add(r.seatId);
+    }
+    return taken;
+  }
+
   applySnapshot(players: PlayerState[]): void {
     const seen = new Set<string>();
     for (const p of players) {
@@ -44,12 +55,13 @@ export class RemotePlayers {
         const node = createAvatar(this.scene, p.color, this.shadows);
         node.position.set(p.x, 0, p.z);
         node.rotation.y = p.yaw;
-        r = { node, tx: p.x, tz: p.z, tyaw: p.yaw, dyaw: p.yaw };
+        r = { node, tx: p.x, tz: p.z, tyaw: p.yaw, dyaw: p.yaw, seatId: p.seatId };
         this.map.set(p.id, r);
       } else {
         r.tx = p.x;
         r.tz = p.z;
         r.tyaw = p.yaw;
+        r.seatId = p.seatId;
       }
     }
 

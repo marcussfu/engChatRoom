@@ -12,25 +12,31 @@ const (
 // ClientMsg is anything the browser sends to the server.
 //
 //	{"t":"join","name":"marcus"}
-//	{"t":"input","x":1.5,"z":-2.0,"yaw":0.78,"anim":"walk"}
+//	{"t":"input","x":1.5,"z":-2.0,"yaw":0.78,"anim":"walk","zoneId":"table3","seatId":"3w"}
+//	{"t":"chat","body":"hi!"}
 type ClientMsg struct {
-	T    string  `json:"t"`
-	Name string  `json:"name"`
-	X    float64 `json:"x"`
-	Z    float64 `json:"z"`
-	Yaw  float64 `json:"yaw"`
-	Anim string  `json:"anim"`
+	T      string  `json:"t"`
+	Name   string  `json:"name"`
+	X      float64 `json:"x"`
+	Z      float64 `json:"z"`
+	Yaw    float64 `json:"yaw"`
+	Anim   string  `json:"anim"`
+	ZoneID string  `json:"zoneId"`
+	SeatID string  `json:"seatId"`
+	Body   string  `json:"body"`
 }
 
 // PlayerState is one avatar's authoritative state as fanned out to clients.
 type PlayerState struct {
-	ID    string  `json:"id"`
-	Name  string  `json:"name"`
-	X     float64 `json:"x"`
-	Z     float64 `json:"z"`
-	Yaw   float64 `json:"yaw"`
-	Anim  string  `json:"anim"`
-	Color string  `json:"color"`
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	X      float64 `json:"x"`
+	Z      float64 `json:"z"`
+	Yaw    float64 `json:"yaw"`
+	Anim   string  `json:"anim"`
+	Color  string  `json:"color"`
+	ZoneID string  `json:"zoneId,omitempty"`
+	SeatID string  `json:"seatId,omitempty"`
 }
 
 // ServerMsg is anything the server sends to the browser.
@@ -38,10 +44,14 @@ type PlayerState struct {
 //	{"t":"welcome","id":"ab12","tickRate":15,"color":"#0090ff"}
 //	{"t":"snapshot","players":[...]}
 //	{"t":"leave","id":"ab12"}
+//	{"t":"chat","id":"ab12","name":"marcus","body":"hi!","ts":1234567890123}
 type ServerMsg struct {
 	T        string        `json:"t"`
 	ID       string        `json:"id,omitempty"`
 	TickRate int           `json:"tickRate,omitempty"`
 	Color    string        `json:"color,omitempty"`
 	Players  []PlayerState `json:"players,omitempty"`
+	Name     string        `json:"name,omitempty"`
+	Body     string        `json:"body,omitempty"`
+	Ts       int64         `json:"ts,omitempty"`
 }

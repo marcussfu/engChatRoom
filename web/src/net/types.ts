@@ -11,6 +11,8 @@ export interface PlayerState {
   yaw: number;
   anim: Anim;
   color: string;
+  zoneId?: string;
+  seatId?: string;
 }
 
 export interface WelcomeMsg {
@@ -30,7 +32,15 @@ export interface LeaveMsg {
   id: string;
 }
 
-export type ServerMsg = WelcomeMsg | SnapshotMsg | LeaveMsg;
+export interface ChatMsg {
+  t: "chat";
+  id: string;
+  name: string;
+  body: string;
+  ts: number;
+}
+
+export type ServerMsg = WelcomeMsg | SnapshotMsg | LeaveMsg | ChatMsg;
 
 export interface JoinMsg {
   t: "join";
@@ -43,6 +53,13 @@ export interface InputMsg {
   z: number;
   yaw: number;
   anim: Anim;
+  zoneId?: string;
+  seatId?: string;
 }
 
-export type ClientMsg = JoinMsg | InputMsg;
+export interface SendChatMsg {
+  t: "chat";
+  body: string;
+}
+
+export type ClientMsg = JoinMsg | InputMsg | SendChatMsg;

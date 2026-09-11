@@ -87,8 +87,19 @@ func (c *Client) readPump(ctx context.Context) {
 			} else {
 				c.state.Anim = protocol.AnimIdle
 			}
+			c.state.ZoneID = msg.ZoneID
+			c.state.SeatID = msg.SeatID
 			c.room.dirty = true
 			c.room.mu.Unlock()
+		case "chat":
+			body := clampBody(msg.Body)
+			if body == "" {
+				continue
+			}
+			c.room.mu.RLock()
+			name := c.state.Name
+			c.room.mu.RUnlock()
+			c.room.broadcastChat(c.state.ID, name, body)
 		default:
 			// ignore unknown message types for forward-compat
 		}
@@ -118,6 +129,15 @@ func (c *Client) writePump(ctx context.Context) {
 
 func clampName(s string) string {
 	const max = 24
+	r := []rune(s)
+	if len(r) > max {
+		r = r[:max]
+	}
+	return string(r)
+}
+
+func clampBody(s string) string {
+	const max = 500
 	r := []rune(s)
 	if len(r) > max {
 		r = r[:max]
