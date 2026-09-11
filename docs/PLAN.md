@@ -14,6 +14,9 @@
 >   commit：`03c192f` → `b798dd5`（CI/README）→ `fb4c29a`（spawn 同步修正）。
 >   **明天第一件事**：重啟 server + 兩分頁 F12 重測，確認 `[net] snapshot` 印出 2 筆不同座標、
 >   看得到另一顆膠囊；過了就收掉 Phase 0，開 Phase 1（LiveKit）。部署（Vercel / Fly.io）待帳號 secrets。
+> - 2026-09-11：**Phase 0 驗收通過** ✅ —— 兩分頁互相看得到、各自移動平順。
+>   **Phase 0 收尾（骨架部分）完成**，開始 **Phase 1**（LiveKit proximity 媒體 + 坐下 + 房間聊天）。
+>   部署（Vercel / Fly.io）仍待帳號 secrets，先不擋 Phase 1 開工。
 
 ## Context（為什麼做這個）
 
@@ -163,9 +166,9 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 - 部署：web → Vercel，Go → Fly.io。← 未做（待帳號 secrets）
 - **CI/CD 同步建立**：lint + typecheck + test + build ← ✅ 已建（`.github/workflows/{web,realtime}.yml`）；
   自動部署待 Vercel / Fly.io 帳號。
-- **驗收**：兩個瀏覽器視窗看到彼此 3D avatar 平順走動；可旋轉/縮放場景、切第一/三人稱。
+- **驗收**：兩個瀏覽器視窗看到彼此 3D avatar 平順走動；可旋轉/縮放場景、切第一/三人稱。✅ **通過（2026-09-11）**
 
-#### Phase 0 現況（2026-09-09，日終）
+#### Phase 0 現況 —— ✅ 完成（骨架部分，2026-09-11）
 
 **已完成並通過檢查（伺服器端 + 建置全綠）**
 - Monorepo 腳手架：`pnpm` workspace、根 `package.json`、`.gitignore`、`git init`（main branch）。
@@ -187,18 +190,17 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   `pnpm typecheck / lint / test(5 pass) / build` 全綠。
 - 過程中修掉一個 bug：`ServeWS` 的 welcome/snapshot 順序競態（welcome 現在在加入 room 前先入佇列）。
 
-**尚未完成（Phase 0 收尾項）**
-1. **瀏覽器實測驗收**：真的開兩個分頁確認 avatar 移動平順、互相看得到、旋轉/縮放、V 切第一/三人稱。
-   （本機 5173 埠被無關專案 `D:\tank-game-react` 的 vite 佔用 → 用別的埠或先關掉它。）
-   啟動：`cd realtime && go run ./cmd/server`；另開 `pnpm dev`。← **唯一還沒過的驗收關卡**
-   - 2026-09-10 首次實測：其他項都 OK，但「兩個 avatar 互相看得到」失敗，只顯示一個。
-     **原因**：本地 avatar spawn 在 `(0,0,6)`，但 client 只在「移動時」才送座標，
-     所以 server 對閒置玩家一律記成 `(0,0,0)`，別的分頁就把你畫在世界原點、疊在一起。
-     **已修**：(a) client 收到 `welcome` 後立刻送一次 `input` 把 spawn 座標上報；
-     (b) server `newClient` 預設 `Z=spawnZ(6)` 對齊 client；(c) DEV 下 `welcome/snapshot/leave`
-     印 console 方便回報。待重新實測確認。
-2. 部署（Vercel / Fly.io）未做——需帳號與 secrets。
-3. 已知：前端 bundle 6.1 MB / gz 1.35 MB（Babylon barrel import）→ 之後改 deep import 或
+**瀏覽器實測驗收 —— ✅ 通過（2026-09-11）**：兩分頁互相看得到、各自移動平順、旋轉/縮放/切視角都正常。
+- 2026-09-10 首次實測踩到一個 bug：「兩個 avatar 互相看得到」失敗，只顯示一個。
+  **原因**：本地 avatar spawn 在 `(0,0,6)`，但 client 只在「移動時」才送座標，
+  所以 server 對閒置玩家一律記成 `(0,0,0)`，別的分頁就把你畫在世界原點、疊在一起。
+  **已修**（`fb4c29a`）：(a) client 收到 `welcome` 後立刻送一次 `input` 把 spawn 座標上報；
+  (b) server `newClient` 預設 `Z=spawnZ(6)` 對齊 client；(c) DEV 下 `welcome/snapshot/leave`
+  印 console 方便回報。2026-09-11 重測確認修好。
+
+**仍未完成（不擋 Phase 1 開工，找空檔補）**
+1. 部署（Vercel / Fly.io）未做——需帳號與 secrets。
+2. 已知：前端 bundle 6.1 MB / gz 1.35 MB（Babylon barrel import）→ 之後改 deep import 或
    `manualChunks`（§七 bundle budget，Phase 2–3）。CI 目前只「報告」大小不擋。
 
 **已完成（2026-09-10 補）**
