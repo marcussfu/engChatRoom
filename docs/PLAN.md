@@ -21,6 +21,12 @@
 >   （anchor/rotator 座位、佔位擋重複坐）、房間文字聊天（記憶體版）。全綠（web 4 項 + realtime
 >   gofmt/vet/build/test 共 6 個測試）。**LiveKit Cloud 帳號 + Postgres** 仍是 Phase 1 剩餘項的前提。
 >   詳見下方「Phase 1 現況」。
+> - 2026-09-14：`3bf6c85` push 上 GitHub 後，`realtime` CI **第一次真的在雲端跑**（之前的
+>   commit 從沒觸發過），`golangci-lint` 的 errcheck 抓到 `integration_test.go` 7 處
+>   `defer x.CloseNow()` 沒檢查回傳值（2 處是 Phase 0 舊 code、5 處是新測試）。
+>   修正並 push（`b502713`）：改成 `defer func() { _ = x.CloseNow() }()`。
+>   `gh run watch` 確認 **realtime CI 全綠**（gofmt/vet/golangci-lint/test -race/build）；
+>   web CI 維持上次的綠燈（這次 commit 沒動到 `web/**`，不會觸發）。
 
 ## Context（為什麼做這個）
 
