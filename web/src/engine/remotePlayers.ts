@@ -44,6 +44,16 @@ export class RemotePlayers {
     return taken;
   }
 
+  /** Current ground position of every remote, keyed by player id — for
+   * distance-based proximity audio (see media/livekit.ts). */
+  positions(): Map<string, { x: number; z: number }> {
+    const out = new Map<string, { x: number; z: number }>();
+    for (const [id, r] of this.map) {
+      out.set(id, { x: r.node.position.x, z: r.node.position.z });
+    }
+    return out;
+  }
+
   applySnapshot(players: PlayerState[]): void {
     const seen = new Set<string>();
     for (const p of players) {

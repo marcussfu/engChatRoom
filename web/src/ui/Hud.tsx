@@ -1,3 +1,4 @@
+import type { MediaStatus } from "../media/livekit";
 import type { ConnStatus } from "../net/socket";
 
 interface HudProps {
@@ -5,7 +6,10 @@ interface HudProps {
   online: number;
   firstPerson: boolean;
   zoneLabel: string | null;
+  mediaStatus: MediaStatus;
+  micEnabled: boolean;
   onToggleCam: () => void;
+  onToggleMic: () => void;
 }
 
 const STATUS_LABEL: Record<ConnStatus, string> = {
@@ -14,20 +18,50 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   closed: "已斷線，重連中…",
 };
 
-export function Hud({ status, online, firstPerson, zoneLabel, onToggleCam }: HudProps) {
+const MEDIA_LABEL: Record<MediaStatus, string> = {
+  idle: "語音未啟動",
+  connecting: "語音連線中…",
+  connected: "語音已連線",
+  disconnected: "語音已斷線",
+  unavailable: "語音未設定",
+  error: "語音連線失敗",
+};
+
+export function Hud({
+  status,
+  online,
+  firstPerson,
+  zoneLabel,
+  mediaStatus,
+  micEnabled,
+  onToggleCam,
+  onToggleMic,
+}: HudProps) {
   return (
     <div className="hud">
       <div className="hud__status">
         <span className={`hud__dot hud__dot--${status}`} />
         <span>{STATUS_LABEL[status]}</span>
         <span>· 線上 {online}</span>
+        <span className="hud__sep" />
+        <span className={`hud__dot hud__dot--media-${mediaStatus}`} />
+        <span>{MEDIA_LABEL[mediaStatus]}</span>
       </div>
 
       {zoneLabel && <div className="hud__zone">🗨️ {zoneLabel}</div>}
 
-      <button className="hud__cam" onClick={onToggleCam}>
-        {firstPerson ? "第三人稱 (V)" : "第一人稱 (V)"}
-      </button>
+      <div className="hud__topRight">
+        <button
+          className="hud__mic"
+          onClick={onToggleMic}
+          disabled={mediaStatus !== "connected"}
+        >
+          {micEnabled ? "🎤 麥克風開" : "🔇 麥克風關"}
+        </button>
+        <button className="hud__cam" onClick={onToggleCam}>
+          {firstPerson ? "第三人稱 (V)" : "第一人稱 (V)"}
+        </button>
+      </div>
 
       <div className="hud__hint">
         WASD / 方向鍵移動 · 點地板走過去 · 點椅子坐下（再點一次站起）· 拖曳旋轉 · 滾輪縮放 · V 切換視角

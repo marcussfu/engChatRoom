@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@babylonjs/core": "^8.6.1",
+    "livekit-client": "^2.22.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

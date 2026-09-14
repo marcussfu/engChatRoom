@@ -37,12 +37,24 @@
 >   改成自己用輕量的 `golang-jwt/jwt/v5` 簽 LiveKit 文件記載的 JWT 格式，零多餘依賴。
 >   `.env`（gitignore）放 `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`，`godotenv` 載入、
 >   沒設就跳過（`/token` 停用但伺服器仍正常跑）。6 個新測試（mint/handler）全過。
->   **前端 LiveKit 連線（加入房間、發布麥克風、proximity 訂閱、視訊貼圖）還沒做**——下次接續。
+>   前端 LiveKit 連線（加入房間、發布麥克風、proximity 訂閱、視訊貼圖）還沒做——下次接續
+>   （**已完成，見下一則**：加入房間、發布麥克風、proximity 音量。視訊貼圖/螢幕分享仍沒做）。
 >   CI 這次抓到一個**跟 LiveKit 無關的既有 bug**：`go test -race` 在 `internal/game` 出現
 >   data race（`Room.remove()` 關 `c.send` channel，跟 `broadcastSnapshot`/`broadcastCtl` 在鎖外
 >   對同一個 channel送資料互撞——本機沒 cgo 一直沒機會用 `-race` 測到，這是它第一次真的抓到）。
 >   修法：兩個 broadcast 函式的send迴圈搬進鎖裡（都是非阻塞 send，成本可忽略），讓「關閉」跟
 >   「送」互斥。本機驗證非 race 版全過，`-race` 交給 CI 驗證。
+>   同日接續：**前端接上 LiveKit**——`media/livekit.ts`（`Media` 類別包 `livekit-client` 的
+>   `Room`）+ `net/tokenClient.ts`（呼叫 `/token`）。收到 `welcome`（拿到自己 id）後就去要
+>   token、連 LiveKit room；identity 直接沿用 WS 的 player id，讓 LiveKit participant 跟
+>   avatar 對得起來。麥克風**預設關**（點 HUD 🎤 按鈕才開，避免一進頁面就跳權限請求）；
+>   proximity「音量隨距離」先用簡化版——所有人音訊都 auto-subscribe（房間本來就小），
+>   每幀依 avatar 距離調整各自 `<audio>` 元素的 `volume`（3m 內全音量、10m 外靜音），
+>   不是真的 LiveKit 選擇性 subscribe（那個要另外設 `autoSubscribe:false` + 手動
+>   `track.setSubscribed()`，複雜度高很多，留到之後真的要省頻寬再做）。
+>   HUD 加語音狀態燈 + 🎤/🔇 切換鈕（未連線時停用）。**這塊完全沒機會用瀏覽器實測**
+>   （包含 identity 對得上、`/token` CORS 真的過、`RoomEvent` 監聽是否如預期觸發、
+>   LiveKit Cloud dashboard 看不看得到 participant）——下次第一件事是使用者實測回報。
 
 ## Context（為什麼做這個）
 
@@ -242,16 +254,18 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   Postgres/migrate、docker→GHCR、fly deploy 以註解留待 Phase 1+。
 
 ### Phase 1 — Proximity 媒體 + 互動 MVP（約 3–4 週）
-- 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。← ✅ 已完成（見下）
-- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← 未做（前端 livekit-client 整合，下次做）
+- 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。← ✅ 已完成
+- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← ✅ 加入房間+麥克風已完成（見下）；鏡頭未做
 - **對話區**：場景放 box 觸發體；進入顯示提示；同 zone/半徑內才 subscribe，音量隨距離。
-  ← ✅ zone 偵測 + zoneId 同步已完成（見下）；「subscribe 音量隨距離」待接 LiveKit。
-- 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← 未做（待 LiveKit）
+  ← ✅ zone 偵測完成；音量隨距離用**簡化版**完成（全員 auto-subscribe + 依距離調
+  `<audio>` volume，非真正選擇性 subscribe，見下）。
+- 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← 未做
 - 點椅子坐下：吸附 seat 錨點 + sit 動作。← ✅ 吸附+朝向已完成；sit **動作**待有骨架 avatar 才有意義。
 - 房間文字聊天（走同一條 WS，寫入 Postgres）。← ✅ WS 聊天已完成；**Postgres 持久化未做**（先記憶體）。
-- 麥克風/鏡頭開關、裝置選擇、Headphones Mode。← 未做（待 LiveKit）
+- 麥克風/鏡頭開關、裝置選擇、Headphones Mode。← 麥克風開關 ✅ 已完成（HUD 按鈕，預設關）；
+  裝置選擇 / Headphones Mode 未做
 - **驗收**：兩人進同一對話區 → 出現視訊、音量隨距離；走出 zone → 斷開；坐下有動作；
-  LiveKit dashboard 看得到 participant/track。← 待 LiveKit 接上後測。
+  LiveKit dashboard 看得到 participant/track。← **完全沒機會用瀏覽器實測，下次第一件事**。
 
 #### Phase 1 現況（2026-09-11）—— 不需帳號的切片先做完
 
@@ -291,13 +305,45 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   - `realtime/.env.example`（committed，範本）；`realtime/.env`（gitignore，使用者本機自己填）。
   - 6 個新測試（mint token 往返解碼驗證 claims、`ConfigFromEnv` 開關、handler 200/400/405）全過。
 
-**尚未完成**
-1. **前端 LiveKit 整合**：加 `livekit-client`、連線拿 token、發佈麥克風、視訊 billboard、
-   螢幕分享、proximity 選擇性 subscribe + 音量隨距離、裝置選擇、Headphones Mode。下次接續。
+**尚未完成（2026-09-14 當時）**
+1. 前端 LiveKit 整合。← ✅ 完成，見下一則「Phase 1 現況（前端 LiveKit）」
 2. **Postgres**：聊天記錄持久化目前只在記憶體，重啟就消失；需要 docker-compose 起 Postgres +
    `chat_messages` table + 一支 migration，之後把 `broadcastChat` 順手寫 DB。
 3. 部署（Vercel / Fly.io）——同 Phase 0，待帳號；**LiveKit 的 secrets 之後要放 Fly secrets**，
    不能跟著 `.env` 進版控（本來就沒進，這裡再提醒一次）。
+
+#### Phase 1 現況（2026-09-14 補二）—— 前端 LiveKit
+
+**已完成**
+- `web/src/media/livekit.ts`：`Media` 類別包 `livekit-client` 的 `Room`。
+  - 連線：`connect(url, token)`；監聽 `ConnectionStateChanged` 回報 `MediaStatus`
+    （`idle|connecting|connected|disconnected|unavailable|error`）。
+  - 播放：`TrackSubscribed`（audio）→ `track.attach()` 建一個隱藏 `<audio>` 塞進
+    `document.body`；`TrackUnsubscribed`/`ParticipantDisconnected` → 移除。
+  - **proximity 音量（簡化版）**：不做 LiveKit 真正的選擇性 subscribe（那需要
+    `autoSubscribe:false` + 手動 `track.setSubscribed()`，複雜度高很多）——房間本來就小
+    （≤15 人），乾脆全員 auto-subscribe，`updateProximity()` 每幀依每個 remote 的
+    avatar 距離（`RemotePlayers.positions()` 新增）線性調整該 participant `<audio>`
+    的 `volume`（3m 內全音量、10m 外靜音）。之後真的要省頻寬再換成真選擇性 subscribe。
+  - 麥克風：`setMicEnabled()`；**預設關**，避免一進頁面就跳瀏覽器權限請求，
+    使用者按 HUD 🎤 按鈕才觸發（`Game.toggleMic()`，未連線時是 no-op）。
+- `web/src/net/tokenClient.ts`：`fetchLiveKitToken()` 把 WS url 換算成 realtime 伺服器的
+  http origin、POST `/token`；把「伺服器沒設 LiveKit（404）」和「其他錯誤」分開回報
+  （`unavailable` vs `error`），不用 throw。
+- `Game.ts`：收到 `welcome`（=已知道自己的 WS player id）後立刻 `connectMedia(id)`——
+  **LiveKit identity 直接沿用 WS player id**，這樣 LiveKit participant 才能對得回 avatar。
+  `frame()` 內每幀呼叫 `media.updateProximity()`。
+- `Hud.tsx`：語音狀態燈（沿用連線燈樣式）+ 🎤/🔇 切換鈕（`mediaStatus !== "connected"` 時停用）。
+- 依賴：`pnpm add livekit-client`（2.22.3）。
+- 全綠：web `typecheck`/`lint`/`vitest(5)`/`build`。
+
+**尚未完成 / 已知限制**
+1. **完全沒機會用瀏覽器實測**——`/token` 的 CORS、identity 對應、`RoomEvent` 是否如預期觸發、
+   LiveKit Cloud dashboard 看不看得到 participant，都要下次使用者實測才知道。
+2. proximity 音量是簡化版（見上），不是真的選擇性 subscribe，頻寬會隨人數变多而變高——
+   ≤15 人的 Phase 1 MVP 先接受，多人再優化（PLAN §五「頻寬 O(N²)」難點）。
+3. 視訊 billboard、螢幕分享、裝置選擇、Headphones Mode 都還沒做。
+4. Postgres、部署——同上一則。
 
 ### Phase 2 — 產品化 + 語言交換模式 + 初階 AI
 - Auth（Clerk/Supabase）含 guest；邀請連結落地頁。

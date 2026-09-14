@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Game } from "./engine/Game";
+import type { MediaStatus } from "./media/livekit";
 import type { ConnStatus } from "./net/socket";
 import { Chat, type ChatEntry } from "./ui/Chat";
 import { Hud } from "./ui/Hud";
@@ -31,6 +32,8 @@ export function App() {
   const [firstPerson, setFirstPerson] = useState(false);
   const [zone, setZone] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatEntry[]>([]);
+  const [mediaStatus, setMediaStatus] = useState<MediaStatus>("idle");
+  const [micEnabled, setMicEnabled] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -45,6 +48,8 @@ export function App() {
         selfIdRef.current = id;
       },
       onZone: (zoneId) => setZone(zoneId ? zoneLabel(zoneId) : null),
+      onMediaStatus: setMediaStatus,
+      onMicEnabled: setMicEnabled,
       onChat: (msg) => {
         setMessages((prev) =>
           [
@@ -70,9 +75,12 @@ export function App() {
         online={online}
         firstPerson={firstPerson}
         zoneLabel={zone}
+        mediaStatus={mediaStatus}
+        micEnabled={micEnabled}
         onToggleCam={() => {
           window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyV" }));
         }}
+        onToggleMic={() => gameRef.current?.toggleMic()}
       />
       <Chat messages={messages} onSend={(body) => gameRef.current?.sendChat(body)} />
     </>

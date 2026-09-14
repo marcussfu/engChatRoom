@@ -12,6 +12,14 @@ export interface NetHandlers {
 
 const DEFAULT_URL = "ws://localhost:8787/ws";
 
+/** Resolve the realtime server's WebSocket URL the same way everywhere:
+ * an explicit override, else VITE_REALTIME_URL, else the local dev default.
+ * Exported so other callers (e.g. the LiveKit token fetch, which needs the
+ * realtime server's HTTP origin) derive from the same value Net actually uses. */
+export function resolveRealtimeUrl(explicit?: string): string {
+  return explicit ?? import.meta.env.VITE_REALTIME_URL ?? DEFAULT_URL;
+}
+
 /**
  * Net owns a single WebSocket to the realtime server, reconnecting with a
  * capped backoff. Outbound input is rate-limited by the caller (Game loop);
@@ -27,7 +35,7 @@ export class Net {
 
   constructor(handlers: NetHandlers, url?: string) {
     this.h = handlers;
-    this.url = url ?? import.meta.env.VITE_REALTIME_URL ?? DEFAULT_URL;
+    this.url = resolveRealtimeUrl(url);
   }
 
   connect(name: string): void {

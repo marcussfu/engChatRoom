@@ -7,7 +7,9 @@ import {
 } from "@babylonjs/core";
 import "@babylonjs/core/Culling/ray"; // enables scene.pick for click-to-move
 
-import { Net, type ConnStatus } from "../net/socket";
+import { Media, type MediaStatus } from "../media/livekit";
+import { Net, resolveRealtimeUrl, type ConnStatus } from "../net/socket";
+import { fetchLiveKitToken } from "../net/tokenClient";
 import type { Anim, ChatMsg } from "../net/types";
 import { CameraRig } from "./cameraRig";
 import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environment";
@@ -33,6 +35,8 @@ export interface GameOptions {
   onChat?: (msg: ChatMsg) => void;
   /** Fires once, when the server assigns our connection id. */
   onSelfId?: (id: string) => void;
+  onMediaStatus?: (s: MediaStatus) => void;
+  onMicEnabled?: (on: boolean) => void;
 }
 
 /**
@@ -47,6 +51,8 @@ export class Game {
   private readonly local: LocalPlayer;
   private readonly remotes: RemotePlayers;
   private readonly net: Net;
+  private readonly media: Media;
+  private readonly wsUrl: string;
   private readonly opts: GameOptions;
   private readonly zones: ZoneMarker[];
   private readonly seatByMesh = new Map<string, SeatMarker>();
@@ -56,6 +62,7 @@ export class Game {
   private lastSentAnim: Anim = "idle";
   private zoneId: string | undefined;
   private forceSend = false;
+  private mediaReady = false;
   private disposed = false;
 
   constructor(canvas: HTMLCanvasElement, opts: GameOptions) {
@@ -75,6 +82,17 @@ export class Game {
     this.zones = env.zones;
     for (const seat of env.seats) this.seatByMesh.set(`seat${seat.id}`, seat);
 
+    this.wsUrl = resolveRealtimeUrl(opts.url);
+    this.media = new Media({
+      onStatus: (s) => {
+        this.mediaReady = s === "connected";
+        this.opts.onMediaStatus?.(s);
+      },
+      onMicError: (msg) => {
+        if (import.meta.env.DEV) console.warn("[media] mic error:", msg);
+      },
+    });
+
     this.net = new Net(
       {
         onStatus: opts.onStatus,
@@ -89,6 +107,7 @@ export class Game {
           this.lastSendAt = performance.now();
           if (import.meta.env.DEV) console.info("[net] welcome", { id, color });
           this.bump();
+          void this.connectMedia(id);
         },
         onSnapshot: (m) => {
           this.remotes.applySnapshot(m.players);
@@ -109,7 +128,7 @@ export class Game {
         },
         onChat: (msg) => this.opts.onChat?.(msg),
       },
-      opts.url,
+      this.wsUrl,
     );
 
     window.addEventListener("keydown", this.onKeyDown);
@@ -163,10 +182,36 @@ export class Game {
 
     if (interp) this.bump();
 
+    // Audio volume needs to track avatar movement even while the 3D scene
+    // itself is between render-on-demand windows, so this runs unconditionally.
+    this.media.updateProximity(this.local.x, this.local.z, this.remotes.positions());
+
     if (now < this.activityUntil || interp) {
       this.scene.render();
     }
   };
+
+  private async connectMedia(identity: string): Promise<void> {
+    const result = await fetchLiveKitToken(this.wsUrl, identity, this.opts.name);
+    if (this.disposed) return;
+    if (!result.ok) {
+      this.opts.onMediaStatus?.(result.reason);
+      if (import.meta.env.DEV) console.info("[media] token unavailable:", result.reason);
+      return;
+    }
+    await this.media.connect(result.url, result.token);
+  }
+
+  /** Flip the mic; no-op until LiveKit is actually connected. */
+  toggleMic(): void {
+    if (!this.mediaReady) return;
+    void this.setMic(!this.media.isMicEnabled);
+  }
+
+  private async setMic(enabled: boolean): Promise<void> {
+    await this.media.setMicEnabled(enabled);
+    this.opts.onMicEnabled?.(this.media.isMicEnabled);
+  }
 
   private sendInput(): void {
     this.lastSentAnim = this.local.animation;
@@ -271,6 +316,7 @@ export class Game {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("resize", this.onResize);
     this.net.close();
+    this.media.disconnect();
     this.engine.stopRenderLoop();
     this.remotes.dispose();
     this.scene.dispose();
