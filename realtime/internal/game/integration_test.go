@@ -26,9 +26,9 @@ func TestTwoClientsSeeEachOther(t *testing.T) {
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
 	a := dial(t, ctx, url)
-	defer a.CloseNow()
+	defer func() { _ = a.CloseNow() }()
 	b := dial(t, ctx, url)
-	defer b.CloseNow()
+	defer func() { _ = b.CloseNow() }()
 
 	if got := readMsg(t, ctx, a).T; got != "welcome" {
 		t.Fatalf("client a: first message = %q, want welcome", got)
@@ -59,9 +59,9 @@ func TestChatIsBroadcastToAll(t *testing.T) {
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
 	a := dial(t, ctx, url)
-	defer a.CloseNow()
+	defer func() { _ = a.CloseNow() }()
 	b := dial(t, ctx, url)
-	defer b.CloseNow()
+	defer func() { _ = b.CloseNow() }()
 
 	readMsg(t, ctx, a) // welcome
 	readMsg(t, ctx, b) // welcome
@@ -86,9 +86,9 @@ func TestInputRelaysZoneAndSeat(t *testing.T) {
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
 	a := dial(t, ctx, url)
-	defer a.CloseNow()
+	defer func() { _ = a.CloseNow() }()
 	b := dial(t, ctx, url)
-	defer b.CloseNow()
+	defer func() { _ = b.CloseNow() }()
 
 	aWelcome := readMsg(t, ctx, a)
 	readMsg(t, ctx, b) // welcome
@@ -136,7 +136,7 @@ func TestLeaveIsBroadcast(t *testing.T) {
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
 	a := dial(t, ctx, url)
-	defer a.CloseNow()
+	defer func() { _ = a.CloseNow() }()
 	b := dial(t, ctx, url)
 
 	readMsg(t, ctx, a) // welcome
