@@ -38,6 +38,11 @@
 >   `.env`（gitignore）放 `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`，`godotenv` 載入、
 >   沒設就跳過（`/token` 停用但伺服器仍正常跑）。6 個新測試（mint/handler）全過。
 >   **前端 LiveKit 連線（加入房間、發布麥克風、proximity 訂閱、視訊貼圖）還沒做**——下次接續。
+>   CI 這次抓到一個**跟 LiveKit 無關的既有 bug**：`go test -race` 在 `internal/game` 出現
+>   data race（`Room.remove()` 關 `c.send` channel，跟 `broadcastSnapshot`/`broadcastCtl` 在鎖外
+>   對同一個 channel送資料互撞——本機沒 cgo 一直沒機會用 `-race` 測到，這是它第一次真的抓到）。
+>   修法：兩個 broadcast 函式的send迴圈搬進鎖裡（都是非阻塞 send，成本可忽略），讓「關閉」跟
+>   「送」互斥。本機驗證非 race 版全過，`-race` 交給 CI 驗證。
 
 ## Context（為什麼做這個）
 

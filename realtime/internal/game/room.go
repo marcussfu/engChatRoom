@@ -61,27 +61,30 @@ func (r *Room) Run(ctx context.Context) {
 
 func (r *Room) broadcastSnapshot() {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if !r.dirty || len(r.clients) == 0 {
-		r.mu.Unlock()
 		return
 	}
 	players := make([]protocol.PlayerState, 0, len(r.clients))
-	targets := make([]chan []byte, 0, len(r.clients))
 	for c := range r.clients {
 		players = append(players, c.state)
-		targets = append(targets, c.send)
 	}
 	r.dirty = false
-	r.mu.Unlock()
 
 	buf, err := json.Marshal(protocol.ServerMsg{T: "snapshot", Players: players})
 	if err != nil {
 		log.Printf("snapshot marshal: %v", err)
 		return
 	}
-	for _, send := range targets {
+	// The send loop stays under the lock, same as broadcastCtl: remove()
+	// closes a client's send channel under this same lock, and sending on a
+	// channel concurrently with closing it is a race (and can panic) —
+	// holding the lock here makes the two mutually exclusive. Each send is
+	// non-blocking (buffered chan + default case), so this costs nothing
+	// beyond the room's current size.
+	for c := range r.clients {
 		select {
-		case send <- buf:
+		case c.send <- buf:
 		default: // slow client: drop this frame, the next snapshot supersedes it
 		}
 	}
@@ -126,20 +129,18 @@ func (r *Room) broadcastChat(id, name, body string) {
 }
 
 // broadcastCtl sends a small control message (e.g. "leave") to every client.
+// Sends happen under the read lock — see broadcastSnapshot for why that
+// matters (it's what keeps this from racing with remove()'s close).
 func (r *Room) broadcastCtl(msg protocol.ServerMsg) {
 	buf, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
 	r.mu.RLock()
-	targets := make([]chan []byte, 0, len(r.clients))
+	defer r.mu.RUnlock()
 	for c := range r.clients {
-		targets = append(targets, c.send)
-	}
-	r.mu.RUnlock()
-	for _, send := range targets {
 		select {
-		case send <- buf:
+		case c.send <- buf:
 		default:
 		}
 	}
