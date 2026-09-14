@@ -55,6 +55,12 @@
 >   HUD 加語音狀態燈 + 🎤/🔇 切換鈕（未連線時停用）。**這塊完全沒機會用瀏覽器實測**
 >   （包含 identity 對得上、`/token` CORS 真的過、`RoomEvent` 監聽是否如預期觸發、
 >   LiveKit Cloud dashboard 看不看得到 participant）——下次第一件事是使用者實測回報。
+>   **本日收工**：`03c192f`→`b7ddbfd` 共 12 個 commit 全部 push，GitHub `main` 兩條 CI 都綠燈。
+>   **下次開場請使用者做的事**：重啟 `realtime`（吃到 `.env`）+ 兩分頁重整，F12 開 Console，
+>   (1) 確認語音狀態燈變化、(2) 點🎤是否跳瀏覽器權限請求、(3) 兩分頁彼此說話音量會不會隨走位
+>   遠近改變、(4) 去 LiveKit Cloud dashboard 看房間 `cafe` 有沒有 2 個 participant、
+>   (5) Console 有沒有紅字（尤其 CORS / WebSocket / LiveKit 連線錯誤）。回報結果後再决定修
+>   bug 還是往下做視訊 billboard。
 
 ## Context（為什麼做這個）
 
