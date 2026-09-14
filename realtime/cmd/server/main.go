@@ -12,10 +12,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/marcussfu/engchatroom/realtime/internal/game"
+	"github.com/marcussfu/engchatroom/realtime/internal/livekit"
 )
 
 func main() {
+	// Optional: fill in LIVEKIT_* from realtime/.env for local dev (see
+	// .env.example). Real environment variables always win — Load() never
+	// overrides a var that's already set — so this is a no-op in CI/prod.
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		log.Printf(".env: %v", err)
+	}
+
 	addr := envOr("ADDR", ":8787")
 	tickRate := envIntOr("TICK_RATE", 15)
 
@@ -31,6 +40,13 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	if lkCfg, ok := livekit.ConfigFromEnv(); ok {
+		mux.HandleFunc("/token", livekit.TokenHandler(lkCfg))
+		log.Println("LiveKit token endpoint enabled at /token")
+	} else {
+		log.Println("LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not set — /token disabled")
+	}
 
 	srv := &http.Server{
 		Addr:              addr,

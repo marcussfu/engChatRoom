@@ -53,6 +53,13 @@ pnpm dev
 | `TICK_RATE` | `15` | 每秒 snapshot 廣播次數 |
 | `VITE_REALTIME_URL` | `ws://localhost:8787/ws` | 前端連線的 WebSocket 位址（放 `web/.env.local`） |
 
+### LiveKit（語音／視訊，Phase 1）
+
+1. 到 [cloud.livekit.io](https://cloud.livekit.io) 建立專案，拿 Websocket URL + API Key + API Secret。
+2. `cp realtime/.env.example realtime/.env`，填入這三個值（`.env` 已 gitignore，不會進版控）。
+3. 啟動 realtime 伺服器時如果印出 `LiveKit token endpoint enabled at /token` 代表接上了；
+   沒設環境變數也能正常跑，只是 `/token` 會停用（訊息裡會說明）。
+
 ## 操作
 
 WASD／方向鍵移動 · 點地板走過去 · 拖曳旋轉鏡頭 · 滾輪縮放 · `V` 切換第一／第三人稱。

@@ -30,6 +30,14 @@
 >   使用者實測回報：點椅子會**瞬移**過去，體驗不對。改成跟點地板一樣**走過去**，抵達才吸附坐下
 >   （`LocalPlayer.walkToSeat()` + `finishSit()`；該桌 keep-out 半徑走位時暫時解除，
 >   否則永遠碰不到座位點）。
+>   **使用者提供 LiveKit Cloud 帳號**（websocket URL + API Key/Secret），Phase 1 剩餘項解鎖。
+>   `realtime` 新增 `internal/livekit`：`POST /token` 簽發房間 join token。**特意不用**
+>   `github.com/livekit/protocol`——那個套件是完整 server SDK（webrtc/redis/nats/prometheus/grpc
+>   等 40+ 個間接依賴），還把 go.mod 逼到需要 go1.26（本機是 1.21.4，`go mod tidy` 直接失敗）；
+>   改成自己用輕量的 `golang-jwt/jwt/v5` 簽 LiveKit 文件記載的 JWT 格式，零多餘依賴。
+>   `.env`（gitignore）放 `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`，`godotenv` 載入、
+>   沒設就跳過（`/token` 停用但伺服器仍正常跑）。6 個新測試（mint/handler）全過。
+>   **前端 LiveKit 連線（加入房間、發布麥克風、proximity 訂閱、視訊貼圖）還沒做**——下次接續。
 
 ## Context（為什麼做這個）
 
@@ -229,8 +237,8 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   Postgres/migrate、docker→GHCR、fly deploy 以註解留待 Phase 1+。
 
 ### Phase 1 — Proximity 媒體 + 互動 MVP（約 3–4 週）
-- 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。← 未做（待 LiveKit Cloud 帳號）
-- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← 未做（同上）
+- 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。← ✅ 已完成（見下）
+- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← 未做（前端 livekit-client 整合，下次做）
 - **對話區**：場景放 box 觸發體；進入顯示提示；同 zone/半徑內才 subscribe，音量隨距離。
   ← ✅ zone 偵測 + zoneId 同步已完成（見下）；「subscribe 音量隨距離」待接 LiveKit。
 - 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← 未做（待 LiveKit）
@@ -260,12 +268,31 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 - Go 新增測試：`TestChatIsBroadcastToAll`、`TestInputRelaysZoneAndSeat`（連同既有 4 個，共 6 個全過）。
 - 全綠：web `typecheck`/`lint`/`vitest(5)`/`build`；realtime `gofmt`/`vet`/`build`/`test`（6 個）。
 
-**尚未完成（真正需要帳號/決策才能繼續）**
-1. **LiveKit Cloud 帳號**：申請後才能做 `POST /token`、加入 LiveKit room、發佈/訂閱媒體、
-   video billboard、螢幕分享、音量隨距離、Headphones Mode——Phase 1 剩下的都卡在這。
+#### Phase 1 現況（2026-09-14 補）—— LiveKit token 端點
+
+**已完成**
+- `realtime/internal/livekit`：
+  - `Config`/`ConfigFromEnv()` 讀 `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`
+    （`main.go` 用 `godotenv` 先載入 `realtime/.env`，真環境變數優先；三個沒設齊就跳過，
+    伺服器仍正常起、只是 `/token` 不註冊）。
+  - `MintToken()`：自己組 LiveKit 文件記載的 JWT（`iss`/`sub`/`nbf`/`exp` + `video: {roomJoin, room}`
+    + `name`），用 `golang-jwt/jwt/v5` HS256 簽。**特意不依賴 `github.com/livekit/protocol`**——
+    那是完整 server SDK，會多拉 40+ 個間接依賴（pion/webrtc、redis、nats、prometheus、grpc…）
+    且把 go.mod 逼到 `go 1.26`（本機工具鏈 1.21.4，`go mod tidy` 直接失敗，只好整個 revert 重來）。
+    只簽一個 join token不需要這些。
+  - `TokenHandler`：`POST /token`，body `{identity, name}` → 回 `{token, url, room}`；
+    `room` 目前寫死 `"cafe"`（跟 WS 那個寫死房間對應）；dev 開放 CORS（跟 WS 的
+    `InsecureSkipVerify` 一樣是 Phase 0/1 暫時作法，部署前要收緊）。
+  - `realtime/.env.example`（committed，範本）；`realtime/.env`（gitignore，使用者本機自己填）。
+  - 6 個新測試（mint token 往返解碼驗證 claims、`ConfigFromEnv` 開關、handler 200/400/405）全過。
+
+**尚未完成**
+1. **前端 LiveKit 整合**：加 `livekit-client`、連線拿 token、發佈麥克風、視訊 billboard、
+   螢幕分享、proximity 選擇性 subscribe + 音量隨距離、裝置選擇、Headphones Mode。下次接續。
 2. **Postgres**：聊天記錄持久化目前只在記憶體，重啟就消失；需要 docker-compose 起 Postgres +
    `chat_messages` table + 一支 migration，之後把 `broadcastChat` 順手寫 DB。
-3. 部署（Vercel / Fly.io）——同 Phase 0，待帳號。
+3. 部署（Vercel / Fly.io）——同 Phase 0，待帳號；**LiveKit 的 secrets 之後要放 Fly secrets**，
+   不能跟著 `.env` 進版控（本來就沒進，這裡再提醒一次）。
 
 ### Phase 2 — 產品化 + 語言交換模式 + 初階 AI
 - Auth（Clerk/Supabase）含 guest；邀請連結落地頁。
