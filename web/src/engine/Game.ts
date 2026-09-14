@@ -193,17 +193,17 @@ export class Game {
     return undefined;
   }
 
-  /** Sit at `seat`, or stand if already sitting there; no-op if someone else
-   * is already sitting there. Always forces an immediate state broadcast. */
+  /** Stand up if already sitting at `seat`; otherwise walk over to it like any
+   * other click-to-move destination (LocalPlayer snaps into the seat pose on
+   * arrival). No-op if someone else is already sitting there. */
   private trySit(seat: SeatMarker): void {
     if (this.local.seatId === seat.id) {
       this.local.standUp();
-    } else if (!this.remotes.occupiedSeats().has(seat.id)) {
-      this.local.sitAt(seat);
-    } else {
+      this.forceSend = true;
       return;
     }
-    this.forceSend = true;
+    if (this.remotes.occupiedSeats().has(seat.id)) return;
+    this.local.walkToSeat(seat);
   }
 
   private bump(): void {

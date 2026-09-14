@@ -27,6 +27,9 @@
 >   修正並 push（`b502713`）：改成 `defer func() { _ = x.CloseNow() }()`。
 >   `gh run watch` 確認 **realtime CI 全綠**（gofmt/vet/golangci-lint/test -race/build）；
 >   web CI 維持上次的綠燈（這次 commit 沒動到 `web/**`，不會觸發）。
+>   使用者實測回報：點椅子會**瞬移**過去，體驗不對。改成跟點地板一樣**走過去**，抵達才吸附坐下
+>   （`LocalPlayer.walkToSeat()` + `finishSit()`；該桌 keep-out 半徑走位時暫時解除，
+>   否則永遠碰不到座位點）。
 
 ## Context（為什麼做這個）
 
@@ -246,9 +249,11 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   `Game.frame()` 每幀算所在 zone，變化時透過 `onZone` 通知 UI（HUD 顯示「🗨️ 桌 N 對話區」徽章）
   並強制立即送一次 `input`（不等節流）。zoneId 現在只用來顯示 + 之後接 LiveKit 的訂閱分組依據。
 - **坐下**：`environment.ts` 每桌回傳兩個 `SeatMarker`（白椅 anchor / 黑椅 rotator，各自朝向桌心的
-  yaw）。點椅子 mesh → `LocalPlayer.sitAt()` 吸附位置+朝向、鎖死移動輸入；再點同一張椅子或點地板
-  → `standUp()`。`RemotePlayers.occupiedSeats()` 擋掉「坐已被佔的椅子」。座位沒有動畫（Phase 0/1
-  用膠囊佔位；sit 動作要等 Ready Player Me/Mixamo 骨架進來才有意義，見 PLAN §一.A）。
+  yaw）。點椅子 mesh → `LocalPlayer.walkToSeat()` 走過去（跟點地板一樣的 click-to-move，而非瞬移）、
+  抵達後 `finishSit()` 才吸附位置+朝向、鎖死移動輸入；再點同一張椅子或點地板 → `standUp()`。
+  走位時該桌自己的 keep-out 半徑會暫時解除（座位本來就在 keep-out 範圍內，否則永遠走不到）。
+  `RemotePlayers.occupiedSeats()` 擋掉「坐已被佔的椅子」。座位沒有動畫（Phase 0/1 用膠囊佔位；
+  sit 動作要等 Ready Player Me/Mixamo 骨架進來才有意義，見 PLAN §一.A）。
 - **房間文字聊天**：`realtime` 新增 `chat` 訊息類型，走既有 WS、繞過 tick 立即廣播（跟 `leave` 一樣）；
   純記憶體、無持久化（`clampBody` 限 500 字元）。前端 `ui/Chat.tsx`（訊息列表 + 輸入框，自己的
   訊息靠右標色）掛在 `App.tsx`，`isTypingTarget` 守門避免打字誤觸 WASD。

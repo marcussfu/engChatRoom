@@ -23,6 +23,8 @@ export class LocalPlayer {
   private anim: Anim = "idle";
   private bodyVisible = true;
   private seat: SeatMarker | null = null;
+  /** Seat we're currently walking toward — set the pose once `target` arrives. */
+  private pendingSeat: SeatMarker | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -60,6 +62,7 @@ export class LocalPlayer {
     if (down) {
       this.keys.add(code);
       this.target = null; // keyboard cancels click-to-move
+      this.pendingSeat = null;
     } else {
       this.keys.delete(code);
     }
@@ -70,19 +73,16 @@ export class LocalPlayer {
   }
 
   setMoveTarget(point: Vector3 | null): void {
+    this.pendingSeat = null;
     this.target = point ? new Vector3(point.x, 0, point.z) : null;
   }
 
-  /** Snap into a seat: position/yaw lock to the anchor, movement input ignored
+  /** Walk to `seat` like any other click-to-move destination; once we arrive,
+   * `update()` snaps position/yaw onto the anchor and locks movement input
    * until `standUp()`. */
-  sitAt(seat: SeatMarker): void {
-    this.seat = seat;
-    this.target = null;
-    this.clearKeys();
-    this.root.position.set(seat.x, 0, seat.z);
-    this.yaw = seat.yaw;
-    this.root.rotation.y = this.yaw;
-    this.anim = "idle";
+  walkToSeat(seat: SeatMarker): void {
+    this.pendingSeat = seat;
+    this.target = new Vector3(seat.x, 0, seat.z);
   }
 
   standUp(): void {
@@ -134,6 +134,10 @@ export class LocalPlayer {
       if (to.length() <= ARRIVE_EPS) {
         this.target = null;
         move = Vector3.Zero();
+        if (this.pendingSeat) {
+          this.finishSit(this.pendingSeat);
+          this.pendingSeat = null;
+        }
       } else {
         move = to.normalize();
       }
@@ -146,7 +150,9 @@ export class LocalPlayer {
 
     if (moving) {
       const next = this.root.position.add(move.scale(SPEED * dt));
-      this.resolveCollisions(next);
+      // While walking the final stretch onto a seat, don't let that table's
+      // own keep-out radius push us back out — the seat sits inside it.
+      this.resolveCollisions(next, this.pendingSeat?.table);
       this.root.position.copyFrom(next);
     }
 
@@ -174,15 +180,26 @@ export class LocalPlayer {
     return posChanged || yawChanged;
   }
 
-  private resolveCollisions(pos: Vector3): void {
+  /** Snap position/yaw onto `seat` and lock movement until `standUp()`. */
+  private finishSit(seat: SeatMarker): void {
+    this.seat = seat;
+    this.root.position.set(seat.x, 0, seat.z);
+    this.yaw = seat.yaw;
+    this.root.rotation.y = this.yaw;
+    this.anim = "idle";
+  }
+
+  private resolveCollisions(pos: Vector3, exemptTable?: number): void {
     // Room bounds
     const bx = ROOM_HALF_X - AVATAR_RADIUS - 0.15;
     const bz = ROOM_HALF_Z - AVATAR_RADIUS - 0.15;
     pos.x = clamp(pos.x, -bx, bx);
     pos.z = clamp(pos.z, -bz, bz);
 
-    // Table keep-out (push radially out)
+    // Table keep-out (push radially out) — skipped for the table we're
+    // walking onto a seat at, since the seat sits inside its keep-out radius.
     for (const t of this.tables) {
+      if (t.n === exemptTable) continue;
       const dx = pos.x - t.x;
       const dz = pos.z - t.z;
       const minDist = t.radius + AVATAR_RADIUS;
