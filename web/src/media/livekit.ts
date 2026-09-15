@@ -68,7 +68,11 @@ export class Media {
         return;
       }
       this.h.onStatus?.("connected");
-    } catch {
+    } catch (err) {
+      // This is the one spot most likely to fail on a first real connection
+      // (bad token, wrong URL, CORS/network) and we had no visibility into
+      // why — surface the real error instead of just flipping to "error".
+      console.error("[media] room.connect failed:", err, { url });
       this.h.onStatus?.("error");
     }
   }
