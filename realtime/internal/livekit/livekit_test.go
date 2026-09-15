@@ -67,7 +67,7 @@ func TestConfigFromEnv(t *testing.T) {
 
 func TestTokenHandler(t *testing.T) {
 	cfg := Config{URL: "wss://example.livekit.cloud", APIKey: "key1", APISecret: "secret1"}
-	srv := httptest.NewServer(TokenHandler(cfg))
+	srv := httptest.NewServer(TokenHandler(cfg, true))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"identity":"abc123","name":"guest-1"}`))
@@ -90,7 +90,7 @@ func TestTokenHandler(t *testing.T) {
 
 func TestTokenHandlerRejectsMissingIdentity(t *testing.T) {
 	cfg := Config{URL: "wss://example.livekit.cloud", APIKey: "key1", APISecret: "secret1"}
-	srv := httptest.NewServer(TokenHandler(cfg))
+	srv := httptest.NewServer(TokenHandler(cfg, true))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL, "application/json", strings.NewReader(`{}`))
@@ -105,7 +105,7 @@ func TestTokenHandlerRejectsMissingIdentity(t *testing.T) {
 
 func TestTokenHandlerRejectsGet(t *testing.T) {
 	cfg := Config{URL: "wss://example.livekit.cloud", APIKey: "key1", APISecret: "secret1"}
-	srv := httptest.NewServer(TokenHandler(cfg))
+	srv := httptest.NewServer(TokenHandler(cfg, true))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL)
@@ -115,5 +115,42 @@ func TestTokenHandlerRejectsGet(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405", resp.StatusCode)
+	}
+}
+
+// TestTokenHandlerDisabledStillSendsCORS is a regression test for the bug a
+// real playtest hit: when LiveKit isn't configured, the route must still
+// exist and still send CORS headers, or the browser reports a confusing CORS
+// failure on the preflight instead of a readable 503 (see main.go — the
+// route used to only get registered when enabled, so an unconfigured server
+// gave a bare, header-less 404 that CORS-blocked before JS ever saw a status).
+func TestTokenHandlerDisabledStillSendsCORS(t *testing.T) {
+	cfg := Config{}
+	srv := httptest.NewServer(TokenHandler(cfg, false))
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("options: %v", err)
+	}
+	defer resp.Body.Close()
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("preflight Access-Control-Allow-Origin = %q, want \"*\"", got)
+	}
+
+	resp2, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"identity":"abc123"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp2.StatusCode)
+	}
+	if got := resp2.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want \"*\"", got)
 	}
 }

@@ -41,7 +41,7 @@ export async function fetchLiveKitToken(
     return { ok: false, reason: "error" };
   }
 
-  if (res.status === 404) return { ok: false, reason: "unavailable" };
+  if (res.status === 503) return { ok: false, reason: "unavailable" };
   if (!res.ok) {
     console.error(`[token] ${endpoint} -> HTTP ${res.status}:`, await res.text().catch(() => ""));
     return { ok: false, reason: "error" };

@@ -61,6 +61,21 @@
 >   遠近改變、(4) 去 LiveKit Cloud dashboard 看房間 `cafe` 有沒有 2 個 participant、
 >   (5) Console 有沒有紅字（尤其 CORS / WebSocket / LiveKit 連線錯誤）。回報結果後再决定修
 >   bug 還是往下做視訊 billboard。
+> - 2026-09-15：使用者實測，Console 貼出真正的錯誤：`/token` 的 CORS preflight 被擋
+>   （`No 'Access-Control-Allow-Origin' header is present`）。**根因**：`main.go` 原本只在
+>   `livekit.ConfigFromEnv()` ok 時才把 `/token` 註冊到 mux；沒設好（或設了沒重啟 server）時，
+>   `/token` 走 Go 內建 404，那個 404 完全沒有 CORS header——瀏覽器連 OPTIONS preflight 都過不去，
+>   JS 端連狀態碼都看不到，只會看到一句語意不明的 CORS 錯誤（不會走到我設計好的
+>   「404→unavailable」判斷）。
+>   **修法**：`/token` 改成**永遠註冊**，`TokenHandler` 多一個 `enabled bool`；沒設定時回
+>   **503**（含 CORS header）而不是讓路由整個消失。前端 `tokenClient.ts` 判斷條件從
+>   `404` 改成 `503`。新增回歸測試 `TestTokenHandlerDisabledStillSendsCORS`
+>   （驗證 disabled 時 OPTIONS 跟 POST 都還是有 `Access-Control-Allow-Origin`）。
+>   同時也在 `media/livekit.ts` / `tokenClient.ts` 補上 `console.error` 印真正的錯誤內容，
+>   這次能這麼快定位就是靠這個。
+>   **這修法解決了 CORS 這一層，但還沒證實使用者的 `realtime/.env` 本身設對了**——如果
+>   `.env` 沒建好或沒重啟 server，現在應該會很乾脆地在 HUD 顯示「語音未設定」而不是「連線失敗」，
+>   下次重測要先看是不是變成這樣、還是換一種錯誤（那就是 token/LiveKit 本身的問題）。
 
 ## Context（為什麼做這個）
 

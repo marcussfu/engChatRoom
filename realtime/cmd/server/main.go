@@ -41,11 +41,15 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	if lkCfg, ok := livekit.ConfigFromEnv(); ok {
-		mux.HandleFunc("/token", livekit.TokenHandler(lkCfg))
+	// /token is always routed — see TokenHandler's doc comment for why an
+	// unconfigured server still needs the route to exist (CORS on the
+	// preflight, specifically).
+	lkCfg, lkOK := livekit.ConfigFromEnv()
+	mux.HandleFunc("/token", livekit.TokenHandler(lkCfg, lkOK))
+	if lkOK {
 		log.Println("LiveKit token endpoint enabled at /token")
 	} else {
-		log.Println("LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not set — /token disabled")
+		log.Println("LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not set — /token will respond 503")
 	}
 
 	srv := &http.Server{
