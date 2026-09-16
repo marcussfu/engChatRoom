@@ -76,6 +76,20 @@
 >   **這修法解決了 CORS 這一層，但還沒證實使用者的 `realtime/.env` 本身設對了**——如果
 >   `.env` 沒建好或沒重啟 server，現在應該會很乾脆地在 HUD 顯示「語音未設定」而不是「連線失敗」，
 >   下次重測要先看是不是變成這樣、還是換一種錯誤（那就是 token/LiveKit 本身的問題）。
+> - 2026-09-16：`realtime/.env` 一開始根本沒建立（`Glob` 一查只有 `.env.example`），
+>   建好+重啟後 `/token` 回 503 變乾脆的成功 200，`main.go` 也印出
+>   `LiveKit token endpoint enabled at /token`——CORS/設定那層確認修好。
+>   接著換一種錯誤：Console 出現 `[media] room.connect failed: ConnectionError:
+>   could not establish signal connection: invalid token`，LiveKit Cloud 端 WebSocket
+>   401。**這代表 token 有簽出來、有送到，但 LiveKit 判定簽名/內容無效**——不是我們程式碼的
+>   claim 結構問題（結構照文件寫，跟官方 SDK 產出的格式一致），八成是 `.env` 裡的
+>   `LIVEKIT_API_SECRET` 複製貼上出錯（打字、漏字、多空白/換行都會讓簽名對不上）。
+>   **使用者直接在 LiveKit Cloud 建一組新的 API key 重貼，問題排除**——證實就是舊那組
+>   key/secret 有問題（不確定是複製出錯還是那組 key 本身已失效），不是程式碼 bug。
+>   收工前使用者要離開，**還沒跑完整驗收清單**（HUD 顯示已連線、dashboard 看到 2 個
+>   participant、麥克風權限、音量隨距離），git 沒有新東西要 push（`74c66cf` 已是最新，
+>   working tree 乾淨）。**下次回來先跑這個驗收清單**確認 Phase 1 語音真的全通，再決定
+>   往下做視訊 billboard/螢幕分享，還是先補 Postgres 聊天持久化。
 
 ## Context（為什麼做這個）
 
