@@ -444,12 +444,14 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   啟動，沒有等到它跑起來，見下）。
 
 **尚未驗證**
-1. **本機沒真的接過 Postgres**——Docker Desktop 這次啟動卡住（可能要手動處理，
-   例如 WSL2 首次設定），沒有繼續等，`TestStoreRoundTrip` 本機還是走 skip。
-   靠 CI 的 service container 做真正的驗證；push 後要回頭確認那個測試真的
-   `PASS` 不是又 `SKIP`。
-2. 使用者自己電腦方便時可以 `docker compose -f infra/docker-compose.yml up -d`
-   驗證本機也接得上、重整瀏覽器聊天記錄還在。
+1. ~~本機沒真的接過 Postgres~~ ← ✅ push 後用 `gh run watch` + 撈 log 確認：
+   CI 的 Postgres service container 真的起來、`DATABASE_URL_TEST` 有設進環境、
+   `internal/store` 那個 package 跑了 ~1s（不是 skip 的瞬間結束）——`TestStoreRoundTrip`
+   在雲端真的對真的 Postgres 跑過且過了。本機 Docker Desktop 這次還是沒等到它啟動，
+   本機沒有另外驗證，但 CI 這關已經是有意義的真實驗證了。
+2. 使用者自己電腦方便時（Docker Desktop 正常之後）可以
+   `docker compose -f infra/docker-compose.yml up -d` 驗證本機也接得上、
+   重整瀏覽器聊天記錄還在——這個仍待使用者找時間做。
 3. 語音的完整驗收清單（HUD 已連線、dashboard 2 participant、麥克風、音量隨距離）
    還沒跑，使用者這台電腦暫時不能測麥克風，找方便的時候再補。
 
