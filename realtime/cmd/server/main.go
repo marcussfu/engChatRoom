@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/marcussfu/engchatroom/realtime/internal/game"
 	"github.com/marcussfu/engchatroom/realtime/internal/livekit"
+	"github.com/marcussfu/engchatroom/realtime/internal/store"
 )
 
 func main() {
@@ -32,6 +33,26 @@ func main() {
 	defer stop()
 
 	room := game.NewRoom(tickRate)
+
+	// Chat persistence is optional: no DATABASE_URL (or a Postgres that's
+	// unreachable) just means chat still works live but history doesn't
+	// survive a restart or reach a client that joins later — see
+	// game.ChatStore's doc comment.
+	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
+		if st, err := store.Open(ctx, dsn); err != nil {
+			log.Printf("postgres: %v — chat history disabled", err)
+		} else if err := st.Migrate(ctx); err != nil {
+			log.Printf("postgres migrate: %v — chat history disabled", err)
+			st.Close()
+		} else {
+			defer st.Close()
+			room.SetChatStore(st)
+			log.Println("chat persistence enabled (Postgres)")
+		}
+	} else {
+		log.Println("DATABASE_URL not set — chat history is in-memory only for this run")
+	}
+
 	go room.Run(ctx)
 
 	mux := http.NewServeMux()

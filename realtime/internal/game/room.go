@@ -20,10 +20,28 @@ var avatarColors = []string{
 	"#8e4ec6", "#ffb224", "#00a2c7", "#e93d82",
 }
 
+// RoomID names the single hard-coded room for chat persistence, mirroring
+// internal/livekit.RoomName (both "cafe" — one logical room until Phase 2's
+// multi-room support; keep them in sync until then).
+const RoomID = "cafe"
+
+// chatHistoryLimit is how many past messages a newly joined client gets
+// replayed.
+const chatHistoryLimit = 50
+
+// ChatStore persists and retrieves room chat history. Room works fine with a
+// nil store (chat still broadcasts live, just isn't durable across restarts)
+// — see internal/store.Store for the Postgres-backed implementation.
+type ChatStore interface {
+	SaveChatMessage(ctx context.Context, roomID, userID, name, body string) error
+	RecentChatMessages(ctx context.Context, roomID string, limit int) ([]protocol.ServerMsg, error)
+}
+
 // Room is the single hard-coded space for Phase 0. It owns all player state and
 // fans an authoritative snapshot out to every client on a fixed tick.
 type Room struct {
 	tickRate int
+	store    ChatStore // nil disables chat persistence
 
 	mu       sync.RWMutex
 	clients  map[*Client]struct{}
@@ -39,6 +57,12 @@ func NewRoom(tickRate int) *Room {
 		tickRate: tickRate,
 		clients:  make(map[*Client]struct{}),
 	}
+}
+
+// SetChatStore wires up chat persistence. Call once before serving traffic;
+// not safe to change concurrently with broadcastChat/ServeWS.
+func (r *Room) SetChatStore(s ChatStore) {
+	r.store = s
 }
 
 // Run broadcasts a snapshot every tick until ctx is cancelled. Idle ticks (no
@@ -115,10 +139,19 @@ func (r *Room) nextColor() string {
 	return color
 }
 
-// broadcastChat fans a room chat message out to every client immediately
-// (like broadcastCtl, it bypasses the tick — chat shouldn't wait for the next
-// snapshot). Messages are not persisted; Phase 1 wires this to Postgres.
+// broadcastChat persists (if a store is configured) then fans a room chat
+// message out to every client immediately (like broadcastCtl, it bypasses
+// the tick — chat shouldn't wait for the next snapshot). A persistence
+// failure is logged but never blocks the live broadcast — a DB hiccup
+// shouldn't take down chat.
 func (r *Room) broadcastChat(id, name, body string) {
+	if r.store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if err := r.store.SaveChatMessage(ctx, RoomID, id, name, body); err != nil {
+			log.Printf("chat persist: %v", err)
+		}
+		cancel()
+	}
 	r.broadcastCtl(protocol.ServerMsg{
 		T:    "chat",
 		ID:   id,
@@ -126,6 +159,23 @@ func (r *Room) broadcastChat(id, name, body string) {
 		Body: body,
 		Ts:   time.Now().UnixMilli(),
 	})
+}
+
+// chatHistory fetches recent chat for replay to a newly joined client. Nil
+// store, a query error, or a timeout all just mean "no history this time" —
+// none of them should keep a client from joining.
+func (r *Room) chatHistory() []protocol.ServerMsg {
+	if r.store == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	msgs, err := r.store.RecentChatMessages(ctx, RoomID, chatHistoryLimit)
+	if err != nil {
+		log.Printf("chat history: %v", err)
+		return nil
+	}
+	return msgs
 }
 
 // broadcastCtl sends a small control message (e.g. "leave") to every client.
@@ -165,12 +215,24 @@ func (r *Room) ServeWS(w http.ResponseWriter, req *http.Request) {
 	ctx, cancel := context.WithCancel(req.Context())
 	defer cancel()
 
-	// Queue the welcome, start the writer, and only THEN join the room — so the
-	// welcome is guaranteed to reach the client before any tick snapshot.
+	// Start the writer FIRST — nothing else can reach client.send until r.add
+	// below, so this is still race-free, and it means welcome + chat history
+	// drain concurrently instead of filling the buffered channel synchronously
+	// (chatHistoryLimit can exceed the channel's buffer size). Queueing before
+	// starting the writer would risk ServeWS blocking forever on a full
+	// channel with nothing yet reading it.
+	go client.writePump(ctx)
+
+	// Welcome, then chat history — both queued before the client joins the
+	// room, so they're guaranteed to reach it before any tick snapshot.
 	if buf, err := json.Marshal(protocol.ServerMsg{T: "welcome", ID: id, TickRate: r.tickRate, Color: client.state.Color}); err == nil {
 		client.send <- buf
 	}
-	go client.writePump(ctx)
+	for _, m := range r.chatHistory() {
+		if buf, err := json.Marshal(m); err == nil {
+			client.send <- buf
+		}
+	}
 
 	r.add(client)
 	log.Printf("join %s (%d online)", id, r.count())

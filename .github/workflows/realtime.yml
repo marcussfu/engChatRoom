@@ -22,6 +22,28 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: engchatroom
+          POSTGRES_PASSWORD: engchatroom
+          POSTGRES_DB: engchatroom
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U engchatroom"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      # internal/store.TestStoreRoundTrip runs for real against this — Store.Migrate
+      # creates the schema itself, no separate migration step (single-table Phase 1
+      # schema; see internal/store/store.go's doc comment on why no golang-migrate/atlas
+      # yet). Kept as its own var (rather than reusing DATABASE_URL) so a test run never
+      # touches the server's real DATABASE_URL, matching what internal/store/store_test.go
+      # checks first.
+      DATABASE_URL_TEST: postgres://engchatroom:engchatroom@localhost:5432/engchatroom?sslmode=disable
     steps:
       - uses: actions/checkout@v4
 
@@ -54,5 +76,4 @@ jobs:
       - name: Build
         run: go build ./...
 
-  # Phase 1+: Postgres service container + golang-migrate up/down, docker build → GHCR,
-  # main → flyctl deploy (staging → promote). See docs/PLAN.md §七.
+  # Phase 1+: docker build → GHCR, main → flyctl deploy (staging → promote). See docs/PLAN.md §七.

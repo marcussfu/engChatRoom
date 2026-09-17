@@ -60,6 +60,18 @@ pnpm dev
 3. 啟動 realtime 伺服器時如果印出 `LiveKit token endpoint enabled at /token` 代表接上了；
    沒設環境變數也能正常跑，只是 `/token` 會停用（訊息裡會說明）。
 
+### 聊天記錄持久化（Postgres，選用）
+
+沒設定也完全能跑，聊天照樣即時互通，只是重啟後歷史會消失、新加入的人看不到之前的對話。
+
+1. `docker compose -f infra/docker-compose.yml up -d`
+2. `realtime/.env` 加一行：
+   ```
+   DATABASE_URL=postgres://engchatroom:engchatroom@localhost:5432/engchatroom?sslmode=disable
+   ```
+3. 啟動 realtime 伺服器時印出 `chat persistence enabled (Postgres)` 代表接上了；資料表
+   由伺服器自己在啟動時建立（`Store.Migrate`），不用額外跑 migration。
+
 ## 操作
 
 WASD／方向鍵移動 · 點地板走過去 · 點椅子坐下（再點一次站起）· 拖曳旋轉鏡頭 · 滾輪縮放 ·
@@ -88,7 +100,7 @@ pnpm --filter web test   # vitest run
 ```bash
 cd realtime
 go run ./cmd/server
-go test ./...
+go test ./...     # internal/store 的 Postgres 測試沒設 DATABASE_URL_TEST 會自動跳過
 go vet ./...
 gofmt -l .        # 應無輸出
 ```
@@ -105,8 +117,11 @@ engChatRoom/
     src/ui/       # React overlay（HUD）
   realtime/
     cmd/server/           # main：路由 + tick loop 啟動
-    internal/game/        # room manager、client、tick、配色
+    internal/game/        # room manager、client、tick、配色、聊天廣播+持久化
+    internal/livekit/     # LiveKit join token 簽發（POST /token）
+    internal/store/       # Postgres：聊天記錄持久化
     internal/protocol/    # wire 訊息定義（與 web/src/net/types.ts 同步）
+  infra/docker-compose.yml  # 本機 Postgres
   docs/PLAN.md    # 技術分析與分階段 Roadmap（活文件）
 ```
 

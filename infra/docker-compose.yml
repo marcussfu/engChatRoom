@@ -1,0 +1,28 @@
+# Local Postgres for chat persistence (docs/PLAN.md §三 Phase 1).
+# Usage: docker compose -f infra/docker-compose.yml up -d
+#
+# Then set in realtime/.env:
+#   DATABASE_URL=postgres://engchatroom:engchatroom@localhost:5432/engchatroom?sslmode=disable
+#
+# realtime/cmd/server creates the schema itself on startup (Store.Migrate) —
+# no separate migration step needed for this single-table Phase 1 schema.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: engchatroom
+      POSTGRES_PASSWORD: engchatroom
+      POSTGRES_DB: engchatroom
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engchatroom"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

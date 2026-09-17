@@ -90,6 +90,23 @@
 >   participant、麥克風權限、音量隨距離），git 沒有新東西要 push（`74c66cf` 已是最新，
 >   working tree 乾淨）。**下次回來先跑這個驗收清單**確認 Phase 1 語音真的全通，再決定
 >   往下做視訊 billboard/螢幕分享，還是先補 Postgres 聊天持久化。
+> - 2026-09-17：使用者這台電腦目前不能測麥克風，語音驗收先擱著，改做
+>   **Postgres 聊天持久化**（不需瀏覽器/麥克風就能推進）。`realtime` 新增 `internal/store`
+>   （`pgx/v5` 直連，**不用 sqlc**——現階段只有一張表、幾個手寫查詢，先不加程式碼產生器）；
+>   `pgx/v5` 最新版要求 go1.25，跟 LiveKit SDK 那次一樣的坑，這次改**釘住 v5.6.0**（相容
+>   go1.21，本機工具鏈裝得動）。`Room` 加 `ChatStore` 介面（`SaveChatMessage` +
+>   `RecentChatMessages`，回傳型別是 `protocol.ServerMsg`，讓 `store` 套件不用 import
+>   `game` 就能滿足介面）；`broadcastChat` 存檔失敗只記 log 不擋廣播；新加入的 client 在
+>   `welcome` 之後、加入 room 之前會收到最近 50 筆歷史（`ServeWS` 順手修正一個潛在死結：
+>   `writePump` 現在移到 welcome/歷史**送出前**啟動，不然歷史筆數一多會塞爆 16 筆的
+>   channel buffer、卡死整個 ServeWS goroutine）。`internal/store` 的整合測試用真的
+>   Postgres 跑、沒設 `DATABASE_URL_TEST` 就乾淨 skip；`realtime.yml` CI 加上 Postgres
+>   service container 讓這個測試在雲端真的跑到（本機這次沒驗到——Docker Desktop 卡在啟動
+>   不知道是不是要手動處理，沒有繼續等）。`infra/docker-compose.yml` + README 補本機
+>   啟動步驟。全部沒接 Postgres 也完全能跑（`DATABASE_URL` 不設，行為跟以前一樣）。
+>   **下次接續**：(1) 確認這次 push 後 CI 的 Postgres service container 真的跑起來、
+>   `TestStoreRoundTrip` 真的執行且過（不是又跳過）；(2) 使用者方便時在自己電腦跑
+>   `docker compose up` 驗證本機也接得上；(3) 語音驗收清單還沒跑，找機會補。
 
 ## Context（為什麼做這個）
 
@@ -296,7 +313,7 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   `<audio>` volume，非真正選擇性 subscribe，見下）。
 - 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← 未做
 - 點椅子坐下：吸附 seat 錨點 + sit 動作。← ✅ 吸附+朝向已完成；sit **動作**待有骨架 avatar 才有意義。
-- 房間文字聊天（走同一條 WS，寫入 Postgres）。← ✅ WS 聊天已完成；**Postgres 持久化未做**（先記憶體）。
+- 房間文字聊天（走同一條 WS，寫入 Postgres）。← ✅ 全部完成，見下方「Phase 1 現況（Postgres）」。
 - 麥克風/鏡頭開關、裝置選擇、Headphones Mode。← 麥克風開關 ✅ 已完成（HUD 按鈕，預設關）；
   裝置選擇 / Headphones Mode 未做
 - **驗收**：兩人進同一對話區 → 出現視訊、音量隨距離；走出 zone → 斷開；坐下有動作；
@@ -342,8 +359,8 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 
 **尚未完成（2026-09-14 當時）**
 1. 前端 LiveKit 整合。← ✅ 完成，見下一則「Phase 1 現況（前端 LiveKit）」
-2. **Postgres**：聊天記錄持久化目前只在記憶體，重啟就消失；需要 docker-compose 起 Postgres +
-   `chat_messages` table + 一支 migration，之後把 `broadcastChat` 順手寫 DB。
+2. **Postgres**：聊天記錄持久化目前只在記憶體，重啟就消失。← ✅ 完成，見下方
+   「Phase 1 現況（2026-09-17）—— Postgres 聊天持久化」
 3. 部署（Vercel / Fly.io）——同 Phase 0，待帳號；**LiveKit 的 secrets 之後要放 Fly secrets**，
    不能跟著 `.env` 進版控（本來就沒進，這裡再提醒一次）。
 
@@ -378,7 +395,63 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 2. proximity 音量是簡化版（見上），不是真的選擇性 subscribe，頻寬會隨人數变多而變高——
    ≤15 人的 Phase 1 MVP 先接受，多人再優化（PLAN §五「頻寬 O(N²)」難點）。
 3. 視訊 billboard、螢幕分享、裝置選擇、Headphones Mode 都還沒做。
-4. Postgres、部署——同上一則。
+4. Postgres ← ✅ 完成，見下一則。部署——同上一則。
+
+#### Phase 1 現況（2026-09-17）—— Postgres 聊天持久化
+
+**已完成**
+- `realtime/internal/store`（`pgx/v5` 直連，不用 sqlc）：
+  - `Open`/`Close`：連線 + ping 驗證。
+  - `Migrate`：純 `CREATE TABLE IF NOT EXISTS chat_messages (...)` + 索引，
+    不是 golang-migrate/atlas——目前只有一張表，還不值得上完整 migration 工具
+    （PLAN §七當初的計畫；架構複雜起來再換）。
+  - `SaveChatMessage` / `RecentChatMessages(roomID, limit)`：後者直接回傳
+    `[]protocol.ServerMsg`（已經是 `{t:"chat",...}` 的形狀），這樣 `store` 不用
+    import `game` 就能滿足 `game.ChatStore`介面（介面定義在 `game`，`store`
+    結構性滿足它）。
+  - **`pgx/v5` 最新版要求 go1.25**，跟這週稍早 LiveKit SDK 那次同一個坑
+    （本機工具鏈 1.21.4）——這次學乖了，直接**釘住 `v5.6.0`**（相容 go1.21），
+    沒有整包 revert 重來。
+- `internal/game`：
+  - `ChatStore` 介面（`SaveChatMessage` + `RecentChatMessages`）；`Room.store`
+    欄位可以是 nil（預設，行為跟以前一樣——純記憶體、broadcast 照常），
+    `SetChatStore()` 在 `main.go` 啟動時視 `DATABASE_URL` 決定要不要接上。
+  - `broadcastChat`：先存檔（失敗只記 log，**不擋廣播**——DB 打嗝不該讓聊天壞掉）
+    再廣播。
+  - 新加入的 client：`welcome` 之後、加入 room 之前，重播最近 50 筆歷史
+    （`chatHistoryLimit`）。**順手修掉一個潛在死結**：`ServeWS` 原本是先把
+    welcome 塞進 channel 才啟動 `writePump`，只有 1 則訊息時沒事；現在歷史
+    可能有 50 則，channel buffer 只有 16，若還是「先塞再啟動」會在還沒人讀取
+    時把 goroutine 卡死。改成**先啟動 `writePump`**（此時 channel 還沒有其他
+    goroutine 摸得到，順序仍安全），welcome/歷史邊送邊讓它同步消化。
+- `main.go`：`DATABASE_URL` 環境變數；沒設 → log 說明、聊天照常只是純記憶體；
+  設了但連不上/migrate 失敗 → log 錯誤、照樣停用持久化繼續開機（不會讓伺服器
+  開不起來）；成功 → log `chat persistence enabled (Postgres)`。
+- `infra/docker-compose.yml`：本機 Postgres 16（`postgres`/`engchatroom`/
+  `engchatroom`）；README 補使用步驟。
+- 測試：
+  - `internal/game` 新增 4 個（用假的 `ChatStore` 記憶體實作，不需要真 DB）：
+    存檔成功會被記到、存檔失敗不擋廣播、新加入的人收到歷史、`RoomID` 常數
+    跟 `livekit.RoomName` 手動保持一致（都是 `"cafe"`，註解互相提醒）。
+  - `internal/store` 新增 `TestStoreRoundTrip`：真的接 Postgres 測
+    Migrate/Save/Recent（含 limit、跨房間不串資料），**沒設
+    `DATABASE_URL_TEST`（或 `DATABASE_URL`）就乾淨 skip**，不會讓沒裝 DB 的
+    人測試失敗。
+  - `.github/workflows/realtime.yml` 加 Postgres service container +
+    `DATABASE_URL_TEST`，讓這個整合測試在 CI 上真的執行（不再只是 skip）。
+- 全綠（本機能驗的部分）：`gofmt`/`vet`/`build`；`internal/game` 全部測試
+  （含新 4 個）、`internal/store` 的測試乾淨 skip（本機 Docker Desktop 卡在
+  啟動，沒有等到它跑起來，見下）。
+
+**尚未驗證**
+1. **本機沒真的接過 Postgres**——Docker Desktop 這次啟動卡住（可能要手動處理，
+   例如 WSL2 首次設定），沒有繼續等，`TestStoreRoundTrip` 本機還是走 skip。
+   靠 CI 的 service container 做真正的驗證；push 後要回頭確認那個測試真的
+   `PASS` 不是又 `SKIP`。
+2. 使用者自己電腦方便時可以 `docker compose -f infra/docker-compose.yml up -d`
+   驗證本機也接得上、重整瀏覽器聊天記錄還在。
+3. 語音的完整驗收清單（HUD 已連線、dashboard 2 participant、麥克風、音量隨距離）
+   還沒跑，使用者這台電腦暫時不能測麥克風，找方便的時候再補。
 
 ### Phase 2 — 產品化 + 語言交換模式 + 初階 AI
 - Auth（Clerk/Supabase）含 guest；邀請連結落地頁。
