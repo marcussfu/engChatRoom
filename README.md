@@ -75,11 +75,20 @@ pnpm dev
 ## 操作
 
 WASD／方向鍵移動 · 點地板走過去 · 點椅子坐下（再點一次站起）· 拖曳旋轉鏡頭 · 滾輪縮放 ·
-`V` 切換第一／第三人稱 · HUD 右上角 🎤 開關麥克風（LiveKit 連上後才能點）。
+`V` 切換第一／第三人稱。
 
-語音走 LiveKit：進房自動連線（不會自動開麥，避免一進頁面就跳權限請求），同房間所有人的
-聲音現在都會依 avatar 距離調整音量（3m 內全音量、10m 外靜音）。沒設 `realtime/.env` 時
-HUD 會顯示「語音未設定」，其餘功能不受影響。
+HUD 右上角（LiveKit 連上後才能點，耳機模式除外）：
+- 🎤 麥克風開關
+- 📷 鏡頭開關 — 開啟後對方會在你的 avatar 上方看到一塊視訊畫面（billboard，永遠面向鏡頭）
+- 🖥️ 螢幕分享 — 跳瀏覽器的分享畫面選擇視窗；一樣顯示在你的 avatar 上方（跟鏡頭共用同一塊
+  billboard，同時開兩個的話畫面優先顯示螢幕分享）；用瀏覽器原生的「停止共用」列結束也會同步
+  更新按鈕狀態
+- 🎧 耳機模式 — 開啟後不管距離都聽不到任何人（不需要 LiveKit 已連線就能切）
+- ⚙️ 裝置 — 選麥克風／鏡頭來源（裝置名稱要先允許過一次權限才看得到，瀏覽器隱私限制）
+
+語音走 LiveKit：進房自動連線（不會自動開麥/開鏡頭，避免一進頁面就跳權限請求），同房間所有人的
+聲音會依 avatar 距離調整音量（3m 內全音量、10m 外靜音，耳機模式時無視距離全部靜音）。
+沒設 `realtime/.env` 時 HUD 會顯示「語音未設定」，其餘功能不受影響。
 
 ---
 
@@ -112,9 +121,10 @@ gofmt -l .        # 應無輸出
 ```
 engChatRoom/
   web/
-    src/engine/   # Babylon 場景、攝影機、角色控制、插值、render-on-demand
-    src/net/      # WebSocket client + 對齊 protocol 的型別
-    src/ui/       # React overlay（HUD）
+    src/engine/   # Babylon 場景、攝影機、角色控制、插值、render-on-demand、視訊 billboard
+    src/media/    # livekit-client 封裝：連線、麥克風/鏡頭/螢幕分享、proximity 音量
+    src/net/      # WebSocket client + LiveKit token fetch + 對齊 protocol 的型別
+    src/ui/       # React overlay（HUD、聊天、裝置選單）
   realtime/
     cmd/server/           # main：路由 + tick loop 啟動
     internal/game/        # room manager、client、tick、配色、聊天廣播+持久化

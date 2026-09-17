@@ -3,6 +3,7 @@ import { Game } from "./engine/Game";
 import type { MediaStatus } from "./media/livekit";
 import type { ConnStatus } from "./net/socket";
 import { Chat, type ChatEntry } from "./ui/Chat";
+import { DeviceMenu } from "./ui/DeviceMenu";
 import { Hud } from "./ui/Hud";
 
 function guestName(): string {
@@ -34,6 +35,9 @@ export function App() {
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [mediaStatus, setMediaStatus] = useState<MediaStatus>("idle");
   const [micEnabled, setMicEnabled] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [screenShareEnabled, setScreenShareEnabled] = useState(false);
+  const [headphonesMode, setHeadphonesMode] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,6 +54,9 @@ export function App() {
       onZone: (zoneId) => setZone(zoneId ? zoneLabel(zoneId) : null),
       onMediaStatus: setMediaStatus,
       onMicEnabled: setMicEnabled,
+      onCameraEnabled: setCameraEnabled,
+      onScreenShareEnabled: setScreenShareEnabled,
+      onHeadphonesMode: setHeadphonesMode,
       onChat: (msg) => {
         setMessages((prev) =>
           [
@@ -77,11 +84,18 @@ export function App() {
         zoneLabel={zone}
         mediaStatus={mediaStatus}
         micEnabled={micEnabled}
+        cameraEnabled={cameraEnabled}
+        screenShareEnabled={screenShareEnabled}
+        headphonesMode={headphonesMode}
         onToggleCam={() => {
           window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyV" }));
         }}
         onToggleMic={() => gameRef.current?.toggleMic()}
+        onToggleCamera={() => gameRef.current?.toggleCamera()}
+        onToggleScreenShare={() => gameRef.current?.toggleScreenShare()}
+        onToggleHeadphones={() => gameRef.current?.toggleHeadphones()}
       />
+      <DeviceMenu game={gameRef.current} enabled={mediaStatus === "connected"} />
       <Chat messages={messages} onSend={(body) => gameRef.current?.sendChat(body)} />
     </>
   );

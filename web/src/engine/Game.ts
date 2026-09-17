@@ -37,6 +37,9 @@ export interface GameOptions {
   onSelfId?: (id: string) => void;
   onMediaStatus?: (s: MediaStatus) => void;
   onMicEnabled?: (on: boolean) => void;
+  onCameraEnabled?: (on: boolean) => void;
+  onScreenShareEnabled?: (on: boolean) => void;
+  onHeadphonesMode?: (on: boolean) => void;
 }
 
 /**
@@ -91,6 +94,15 @@ export class Game {
       onMicError: (msg) => {
         if (import.meta.env.DEV) console.warn("[media] mic error:", msg);
       },
+      onCameraError: (msg) => {
+        if (import.meta.env.DEV) console.warn("[media] camera error:", msg);
+      },
+      onScreenShareError: (msg) => {
+        if (import.meta.env.DEV) console.warn("[media] screen share error:", msg);
+      },
+      onScreenShareStopped: () => this.opts.onScreenShareEnabled?.(false),
+      onVideoTrack: (identity, el, source) => this.remotes.attachVideo(identity, el, source),
+      onVideoTrackRemoved: (identity, source) => this.remotes.detachVideo(identity, source),
     });
 
     this.net = new Net(
@@ -211,6 +223,52 @@ export class Game {
   private async setMic(enabled: boolean): Promise<void> {
     await this.media.setMicEnabled(enabled);
     this.opts.onMicEnabled?.(this.media.isMicEnabled);
+  }
+
+  /** Flip the camera; no-op until LiveKit is actually connected. */
+  toggleCamera(): void {
+    if (!this.mediaReady) return;
+    void this.setCamera(!this.media.isCameraEnabled);
+  }
+
+  private async setCamera(enabled: boolean): Promise<void> {
+    await this.media.setCameraEnabled(enabled);
+    this.opts.onCameraEnabled?.(this.media.isCameraEnabled);
+  }
+
+  /** Flip screen share; no-op until LiveKit is actually connected. Starting
+   * a share prompts the browser's own picker. */
+  toggleScreenShare(): void {
+    if (!this.mediaReady) return;
+    void this.setScreenShare(!this.media.isScreenShareEnabled);
+  }
+
+  private async setScreenShare(enabled: boolean): Promise<void> {
+    await this.media.setScreenShareEnabled(enabled);
+    this.opts.onScreenShareEnabled?.(this.media.isScreenShareEnabled);
+  }
+
+  /** Mute everyone regardless of distance — doesn't require a live LiveKit
+   * connection, it's a pure playback flag applied whenever audio elements exist. */
+  toggleHeadphones(): void {
+    this.media.setHeadphonesMode(!this.media.isHeadphonesMode);
+    this.opts.onHeadphonesMode?.(this.media.isHeadphonesMode);
+  }
+
+  listAudioInputs(): Promise<MediaDeviceInfo[]> {
+    return this.media.listInputDevices("audioinput");
+  }
+
+  listVideoInputs(): Promise<MediaDeviceInfo[]> {
+    return this.media.listInputDevices("videoinput");
+  }
+
+  setAudioInputDevice(deviceId: string): void {
+    void this.media.setAudioInputDevice(deviceId);
+  }
+
+  setVideoInputDevice(deviceId: string): void {
+    void this.media.setVideoInputDevice(deviceId);
   }
 
   private sendInput(): void {

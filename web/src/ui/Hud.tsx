@@ -8,8 +8,14 @@ interface HudProps {
   zoneLabel: string | null;
   mediaStatus: MediaStatus;
   micEnabled: boolean;
+  cameraEnabled: boolean;
+  screenShareEnabled: boolean;
+  headphonesMode: boolean;
   onToggleCam: () => void;
   onToggleMic: () => void;
+  onToggleCamera: () => void;
+  onToggleScreenShare: () => void;
+  onToggleHeadphones: () => void;
 }
 
 const STATUS_LABEL: Record<ConnStatus, string> = {
@@ -34,9 +40,17 @@ export function Hud({
   zoneLabel,
   mediaStatus,
   micEnabled,
+  cameraEnabled,
+  screenShareEnabled,
+  headphonesMode,
   onToggleCam,
   onToggleMic,
+  onToggleCamera,
+  onToggleScreenShare,
+  onToggleHeadphones,
 }: HudProps) {
+  const mediaConnected = mediaStatus === "connected";
+
   return (
     <div className="hud">
       <div className="hud__status">
@@ -51,12 +65,17 @@ export function Hud({
       {zoneLabel && <div className="hud__zone">🗨️ {zoneLabel}</div>}
 
       <div className="hud__topRight">
-        <button
-          className="hud__mic"
-          onClick={onToggleMic}
-          disabled={mediaStatus !== "connected"}
-        >
+        <button className="hud__btn" onClick={onToggleMic} disabled={!mediaConnected}>
           {micEnabled ? "🎤 麥克風開" : "🔇 麥克風關"}
+        </button>
+        <button className="hud__btn" onClick={onToggleCamera} disabled={!mediaConnected}>
+          {cameraEnabled ? "📷 鏡頭開" : "📷 鏡頭關"}
+        </button>
+        <button className="hud__btn" onClick={onToggleScreenShare} disabled={!mediaConnected}>
+          {screenShareEnabled ? "🖥️ 分享中" : "🖥️ 分享螢幕"}
+        </button>
+        <button className="hud__btn" onClick={onToggleHeadphones}>
+          {headphonesMode ? "🎧 耳機模式開" : "🎧 耳機模式關"}
         </button>
         <button className="hud__cam" onClick={onToggleCam}>
           {firstPerson ? "第三人稱 (V)" : "第一人稱 (V)"}

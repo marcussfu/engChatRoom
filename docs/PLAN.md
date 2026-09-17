@@ -107,6 +107,16 @@
 >   **下次接續**：(1) 確認這次 push 後 CI 的 Postgres service container 真的跑起來、
 >   `TestStoreRoundTrip` 真的執行且過（不是又跳過）；(2) 使用者方便時在自己電腦跑
 >   `docker compose up` 驗證本機也接得上；(3) 語音驗收清單還沒跑，找機會補。
+>   同日接續：(1) 用 `gh run watch` 確認 CI 的 `TestStoreRoundTrip` 真的執行且過；
+>   (2) Docker Desktop 後來自己起來了，當場本機也真的跑了一次、`PASS`——Postgres 持久化
+>   本機+CI 都驗證過，收工。使用者接著說「先完成 Phase 1」：把清單裡剩下、**不需要當場測
+>   麥克風也能寫完**的四項全部做完——視訊 billboard（掛在對方 avatar 上方的平面，永遠面向
+>   鏡頭）、螢幕分享（沒有牆面螢幕 mesh 可貼，暫時跟鏡頭共用同一塊 billboard）、
+>   裝置選擇（⚙️ 選單，選麥克風/鏡頭來源）、Headphones Mode（無視距離全部靜音）。
+>   跟語音那次一樣完全沒機會用瀏覽器實測，靠 typecheck/lint/test/build 全綠驗證。
+>   **至此 Phase 1 除了語音的瀏覽器驗收清單，程式碼全部完成**——下次找到能測麥克風/鏡頭的
+>   環境時，把語音 + 這四項一次測掉，再決定進 Phase 2 還是先補真的螢幕 mesh/選擇性 subscribe
+>   這類「已知簡化」。
 
 ## Context（為什麼做這個）
 
@@ -305,19 +315,19 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   → gofmt 檢查 → `go vet` → golangci-lint → `go test -race` → `go build`。
   Postgres/migrate、docker→GHCR、fly deploy 以註解留待 Phase 1+。
 
-### Phase 1 — Proximity 媒體 + 互動 MVP（約 3–4 週）
+### Phase 1 — Proximity 媒體 + 互動 MVP（約 3–4 週）—— ✅ 程式碼全部完成
 - 接 LiveKit Cloud；Go 新增 `POST /token`（依 user + roomId 簽 token）。← ✅ 已完成
-- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← ✅ 加入房間+麥克風已完成（見下）；鏡頭未做
+- 進 room 自動加入 LiveKit room、發佈麥克風/鏡頭。← ✅ 全部完成（見下方 2026-09-17 補二）
 - **對話區**：場景放 box 觸發體；進入顯示提示；同 zone/半徑內才 subscribe，音量隨距離。
   ← ✅ zone 偵測完成；音量隨距離用**簡化版**完成（全員 auto-subscribe + 依距離調
   `<audio>` volume，非真正選擇性 subscribe，見下）。
-- 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← 未做
+- 視訊以 billboard 貼圖平面顯示在 avatar 上方；螢幕分享貼牆上螢幕 mesh。← ✅ billboard 完成；
+  螢幕分享**改貼同一塊 billboard**（尚無牆上螢幕 mesh 可貼，見下方 2026-09-17 補二說明）。
 - 點椅子坐下：吸附 seat 錨點 + sit 動作。← ✅ 吸附+朝向已完成；sit **動作**待有骨架 avatar 才有意義。
 - 房間文字聊天（走同一條 WS，寫入 Postgres）。← ✅ 全部完成，見下方「Phase 1 現況（Postgres）」。
-- 麥克風/鏡頭開關、裝置選擇、Headphones Mode。← 麥克風開關 ✅ 已完成（HUD 按鈕，預設關）；
-  裝置選擇 / Headphones Mode 未做
+- 麥克風/鏡頭開關、裝置選擇、Headphones Mode。← ✅ 全部完成（見下方 2026-09-17 補二）。
 - **驗收**：兩人進同一對話區 → 出現視訊、音量隨距離；走出 zone → 斷開；坐下有動作；
-  LiveKit dashboard 看得到 participant/track。← **完全沒機會用瀏覽器實測，下次第一件事**。
+  LiveKit dashboard 看得到 participant/track。← **完全沒機會用瀏覽器實測，Phase 1 唯一剩下的事**。
 
 #### Phase 1 現況（2026-09-11）—— 不需帳號的切片先做完
 
@@ -455,6 +465,55 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
    Postgres 聊天持久化這塊可以視為完整收工。`docker compose down` 收掉測試用的容器。
 3. 語音的完整驗收清單（HUD 已連線、dashboard 2 participant、麥克風、音量隨距離）
    還沒跑，使用者這台電腦暫時不能測麥克風，找方便的時候再補。
+
+#### Phase 1 現況（2026-09-17 補二）—— 視訊、螢幕分享、裝置選擇、Headphones Mode
+
+使用者要求「先完成 Phase 1」；語音驗收仍卡在使用者電腦不能測麥克風，所以先把 Phase 1
+清單裡剩下**都是寫程式碼、不需要現在就能測麥克風**的四項做完——跟前端 LiveKit 音訊那次一樣，
+全部**沒機會用瀏覽器實測**，靠 typecheck/lint/test/build 全綠做能做到的驗證。
+
+**已完成**
+- `media/livekit.ts`：
+  - 視訊：`TrackSubscribed`/`TrackUnsubscribed` 現在也處理 `Track.Kind.Video`，用
+    `publication.source` 分辨 camera vs screen_share；透過 `onVideoTrack`/
+    `onVideoTrackRemoved` 回呼把 `<video>` 元素交給呼叫者（不放進 DOM，只當材質來源）。
+  - `setCameraEnabled()`/`setScreenShareEnabled()`：跟 `setMicEnabled()` 同款式，失敗走
+    `onCameraError`/`onScreenShareError`（例如使用者在螢幕分享選擇視窗按取消）。
+  - 監聽 `LocalTrackUnpublished`：使用者用瀏覽器原生「停止共用」列結束分享時（不是透過我們的
+    按鈕），也會同步把 `screenShareEnabled` 撥回 false 並觸發 `onScreenShareStopped`，
+    HUD 按鈕狀態才不會卡住。
+  - 裝置：`listInputDevices(kind)` 包 `navigator.mediaDevices.enumerateDevices()`；
+    `setAudioInputDevice()`/`setVideoInputDevice()` 呼叫 LiveKit `Room.switchActiveDevice()`。
+  - Headphones Mode：`setHeadphonesMode()` 一個布林開關，`updateProximity()` 開啟時無視距離
+    把所有人的 `<audio>.volume` 打成 0；不需要 LiveKit 已連線就能切（純播放端邏輯）。
+- `engine/remotePlayers.ts`：新增視訊 billboard——`Mesh.BILLBOARDMODE_ALL` 的平面
+  （永遠面向鏡頭），掛在對方 avatar 上方（`AVATAR_HEIGHT + 0.35`），材質用 `disableLighting`
+  + `emissiveTexture`（不受場景光照影響，畫面穩定不會忽暗忽亮）。**螢幕分享跟鏡頭共用同一塊
+  billboard**（螢幕分享優先顯示）——目前 Cafe 場景還是 Phase 0 的佔位方塊，沒有牆面螢幕
+  mesh 可以貼，等 Phase 2 真的場景素材進來、有牆面錨點了再改成貼牆上；`VideoTexture`
+  綁定來源 `<video>` 元素是建構時決定，換來源用 dispose 舊的、建新的（不能原地替換）。
+- `Game.ts`：`toggleCamera()`/`toggleScreenShare()`/`toggleHeadphones()`（前兩個跟
+  `toggleMic()` 一樣、LiveKit 未連線時是 no-op；耳機模式不設限制）；
+  `listAudioInputs()`/`listVideoInputs()`/`setAudioInputDevice()`/`setVideoInputDevice()`
+  轉發給 `Media`；把 `Media` 的視訊回呼接到 `RemotePlayers.attachVideo()`/`detachVideo()`。
+- `ui/DeviceMenu.tsx`（新元件）：⚙️ 按鈕開合的小面板，開啟時才去列裝置（`enumerateDevices()`
+  在還沒要過權限前裝置名稱是空的，屬瀏覽器隱私限制，不是 bug）；兩個 `<select>` 選好直接呼叫
+  `Game` 的 device setter。
+- `Hud.tsx`：新增 📷 鏡頭 / 🖥️ 螢幕分享 / 🎧 耳機模式三個按鈕，跟既有 🎤 麥克風按鈕同排
+  （`hud__topRight` 加 `flex-wrap` 免得窄螢幕擠爆一行）；按鈕樣式共用類別從 `.hud__mic`
+  改名 `.hud__btn`（原本只給麥克風用，現在四顆共用，名字要對得上）。
+- 全綠：web `typecheck`/`lint`/`vitest(5)`/`build`（bundle 大小沒有新增依賴，跟上次持平）。
+
+**已知限制 / 尚未驗證**
+1. **完全沒機會用瀏覽器實測**——四項全部都是這樣，包含視訊 billboard 位置/大小合不合理、
+   螢幕分享選擇視窗跳不跳得出來、裝置選單的 `<select>` 樣式在真瀏覽器好不好用、Headphones
+   Mode 切了音量真的變 0 嗎。下次找到能測麥克風/鏡頭的環境時，跟語音驗收清單一起測。
+2. 螢幕分享貼在 avatar 上方而非牆上螢幕 mesh（見上），等 Phase 2 場景素材進來再改。
+3. Headphones Mode 只影響「聽」，不影響「說」（麥克風照樣送出）——這是照 PLAN 原文
+   「Headphones Mode（靜音全部）」的字面意思做的，如果之後想要「靜音全部」也包含自己的麥克風，
+   要另外討論語意。
+
+至此 **Phase 1 除了語音瀏覽器驗收，程式碼全部完成**。
 
 ### Phase 2 — 產品化 + 語言交換模式 + 初階 AI
 - Auth（Clerk/Supabase）含 guest；邀請連結落地頁。

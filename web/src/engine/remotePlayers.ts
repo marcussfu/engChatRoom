@@ -1,10 +1,31 @@
-import { TransformNode, Vector3, type Scene, type ShadowGenerator } from "@babylonjs/core";
+import {
+  Color3,
+  Mesh,
+  MeshBuilder,
+  StandardMaterial,
+  TransformNode,
+  Vector3,
+  VideoTexture,
+  type Scene,
+  type ShadowGenerator,
+} from "@babylonjs/core";
 import type { PlayerState } from "../net/types";
-import { createAvatar } from "./avatar";
+import type { VideoSource } from "../media/livekit";
+import { AVATAR_HEIGHT, createAvatar } from "./avatar";
 import { dampFactor, shortestAngle } from "./mathUtils";
 
 const SMOOTH_K = 14; // exponential catch-up rate
 const SETTLE_EPS = 0.0008;
+
+// Video billboard (docs/PLAN.md §一.B.4 "視訊以 billboard 貼圖平面顯示在 avatar 上方").
+// Screen share reuses the same billboard as camera (whichever is active; screen
+// share wins if both are) rather than a dedicated wall screen mesh — there's no
+// wall-mounted screen geometry yet (Phase 0's Cafe is still placeholder boxes),
+// so a real "stick it on the wall" anchor is Phase 2 work once real scene
+// assets exist.
+const VIDEO_PLANE_WIDTH = 0.9;
+const VIDEO_PLANE_HEIGHT = 0.68; // ~4:3, a reasonable webcam/screen default
+const VIDEO_PLANE_Y = AVATAR_HEIGHT + 0.35;
 
 interface Remote {
   node: TransformNode;
@@ -13,6 +34,10 @@ interface Remote {
   tyaw: number;
   dyaw: number;
   seatId?: string;
+  cameraEl?: HTMLVideoElement;
+  screenEl?: HTMLVideoElement;
+  videoPlane?: Mesh;
+  videoTexture?: VideoTexture;
 }
 
 /** Other players: created/destroyed from snapshots, smoothed toward the latest
@@ -54,6 +79,64 @@ export class RemotePlayers {
     return out;
   }
 
+  /** Show `id`'s camera or screen-share video on a billboard above their
+   * avatar. No-op if `id` isn't a known remote (e.g. a track arriving just
+   * after they left). */
+  attachVideo(id: string, el: HTMLVideoElement, source: VideoSource): void {
+    const r = this.map.get(id);
+    if (!r) return;
+    if (source === "camera") r.cameraEl = el;
+    else r.screenEl = el;
+    this.refreshVideo(r);
+  }
+
+  detachVideo(id: string, source: VideoSource): void {
+    const r = this.map.get(id);
+    if (!r) return;
+    if (source === "camera") r.cameraEl = undefined;
+    else r.screenEl = undefined;
+    this.refreshVideo(r);
+  }
+
+  /** Rebuild the billboard for whichever video (screen share, else camera,
+   * else none) `r` currently has. Babylon's VideoTexture is bound to its
+   * source element at construction, so "switching" means dispose + recreate
+   * rather than mutating in place. */
+  private refreshVideo(r: Remote): void {
+    const el = r.screenEl ?? r.cameraEl;
+
+    r.videoTexture?.dispose();
+    r.videoTexture = undefined;
+
+    if (!el) {
+      r.videoPlane?.dispose();
+      r.videoPlane = undefined;
+      return;
+    }
+
+    if (!r.videoPlane) {
+      const plane = MeshBuilder.CreatePlane(
+        "video",
+        { width: VIDEO_PLANE_WIDTH, height: VIDEO_PLANE_HEIGHT },
+        this.scene,
+      );
+      plane.billboardMode = Mesh.BILLBOARDMODE_ALL; // always faces the viewer
+      plane.parent = r.node;
+      plane.position.set(0, VIDEO_PLANE_Y, 0);
+      const mat = new StandardMaterial("videoMat", this.scene);
+      mat.backFaceCulling = false;
+      mat.disableLighting = true; // unlit: full brightness regardless of scene lighting
+      mat.diffuseColor = Color3.Black();
+      plane.material = mat;
+      r.videoPlane = plane;
+    }
+
+    const texture = new VideoTexture("videoTex", el, this.scene, true, true);
+    const mat = r.videoPlane.material as StandardMaterial;
+    mat.emissiveTexture = texture;
+    r.videoTexture = texture;
+  }
+
   applySnapshot(players: PlayerState[]): void {
     const seen = new Set<string>();
     for (const p of players) {
@@ -77,7 +160,7 @@ export class RemotePlayers {
 
     for (const [id, r] of this.map) {
       if (!seen.has(id)) {
-        r.node.dispose();
+        this.disposeRemote(r);
         this.map.delete(id);
       }
     }
@@ -86,9 +169,15 @@ export class RemotePlayers {
   remove(id: string): void {
     const r = this.map.get(id);
     if (r) {
-      r.node.dispose();
+      this.disposeRemote(r);
       this.map.delete(id);
     }
+  }
+
+  private disposeRemote(r: Remote): void {
+    r.videoTexture?.dispose();
+    r.videoPlane?.dispose();
+    r.node.dispose();
   }
 
   /** Returns true while at least one avatar is still visibly catching up. */
@@ -116,7 +205,7 @@ export class RemotePlayers {
   }
 
   dispose(): void {
-    for (const r of this.map.values()) r.node.dispose();
+    for (const r of this.map.values()) this.disposeRemote(r);
     this.map.clear();
   }
 }

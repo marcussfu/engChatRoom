@@ -110,11 +110,14 @@ body,
   top: 12px;
   right: 14px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
+  max-width: min(420px, calc(100vw - 28px));
 }
 
 .hud__cam,
-.hud__mic {
+.hud__btn {
   pointer-events: auto;
   border: 0;
   cursor: pointer;
@@ -127,12 +130,54 @@ body,
   white-space: nowrap;
 }
 .hud__cam:hover,
-.hud__mic:hover:not(:disabled) {
+.hud__btn:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.6);
 }
-.hud__mic:disabled {
+.hud__btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.deviceMenu {
+  position: fixed;
+  top: 56px;
+  right: 14px;
+  z-index: 1;
+}
+
+.deviceMenu__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  padding: 10px;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  width: max(220px, min(280px, calc(100vw - 28px)));
+}
+
+.deviceMenu__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: #fff;
+}
+
+.deviceMenu__row select {
+  font: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 100%;
+}
+.deviceMenu__row select option {
+  color: #000; /* native dropdown list renders on a light popup in most browsers */
 }
 
 .chat {
