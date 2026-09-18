@@ -117,6 +117,14 @@
 >   **至此 Phase 1 除了語音的瀏覽器驗收清單，程式碼全部完成**——下次找到能測麥克風/鏡頭的
 >   環境時，把語音 + 這四項一次測掉，再決定進 Phase 2 還是先補真的螢幕 mesh/選擇性 subscribe
 >   這類「已知簡化」。
+> - 2026-09-18：麥克風還是不能測，使用者選擇先開始 **Phase 2**（列了帳號依賴表格：多房間/
+>   語言交換模式/navmesh/emote/部分牆面嵌入不需要外部帳號可以先做；真 Auth/Avatar 自訂/AI
+>   要帳號，先擋著）。使用者接著問部署平台，**決定把 web 從 Vercel 改成 Cloudflare Pages**
+>   （跟 Cloudflare R2 放模型檔同一個生態圈，省一個帳號、R2 無出站流量費）；Go 仍是 Fly.io，
+>   Postgres 仍是 Neon。已更新 §二技術選型表 + §七 CI/CD 表 + Phase 0/1 現況裡「部署」欄位；
+>   歷史進度紀錄（2026-09-10/11 那兩則，本檔最上面）保留原文不動，畢竟是「當時決定」的紀錄，
+>   不是還沒解決的待辦。**部署本身還沒做**（沒申請帳號），只是把文件上的選型改掉。
+>   Phase 2 具體要先做哪一項，使用者還在決定中。
 
 ## Context（為什麼做這個）
 
@@ -226,7 +234,7 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 | Auth | Clerk 或 Supabase Auth（含 guest/匿名） | Auth0、自刻 JWT | 快、內建訪客 |
 | 資料庫 | Postgres（`pgx` + `sqlc`） | — | 關聯資料 |
 | Cache / fan-out（之後） | Redis 或 NATS | — | 多實例 |
-| 部署 | Vercel/Netlify（web）+ Fly.io/Railway（Go）+ Neon（PG）+ LiveKit Cloud + R2/S3（glb） | k8s / 雲廠商 | 低維運 |
+| 部署 | **Cloudflare Pages**（web）+ Fly.io/Railway（Go）+ Neon（PG）+ LiveKit Cloud + **Cloudflare R2**（glb） | Vercel/Netlify（web）；AWS（EC2/ECS/RDS/S3，但個人專案/MVP 階段自己接維運成本太高）| 低維運；web 跟 glb 都在 Cloudflare，省一個帳號、R2 無出站流量費對之後的模型檔案有利 |
 
 ### 同步的資料（每個 player）
 `{ id, roomId, x, y, z, yaw, animState(idle|walk|sit|wave…), seatId?, zoneId?, status, mic, cam }`
@@ -263,9 +271,10 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 - `realtime/`（Go）：WebSocket server，一個寫死的 room；收 `move`、以 tick 廣播所有人 transform。
 - 遠端 avatar 用膠囊或簡單模型，套插值 + walk 動作。
 - render-on-demand：有人移動/動畫時跑 render loop，全體靜止時凍結。
-- 部署：web → Vercel，Go → Fly.io。← 未做（待帳號 secrets）
+- 部署：web → **Cloudflare Pages**，Go → Fly.io。← 未做（待帳號 secrets；2026-09-18 把 web
+  的選型從 Vercel 改成 Cloudflare Pages，理由見下方進度紀錄）
 - **CI/CD 同步建立**：lint + typecheck + test + build ← ✅ 已建（`.github/workflows/{web,realtime}.yml`）；
-  自動部署待 Vercel / Fly.io 帳號。
+  自動部署待 Cloudflare Pages / Fly.io 帳號。
 - **驗收**：兩個瀏覽器視窗看到彼此 3D avatar 平順走動；可旋轉/縮放場景、切第一/三人稱。✅ **通過（2026-09-11）**
 
 #### Phase 0 現況 —— ✅ 完成（骨架部分，2026-09-11）
@@ -299,7 +308,7 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   印 console 方便回報。2026-09-11 重測確認修好。
 
 **仍未完成（不擋 Phase 1 開工，找空檔補）**
-1. 部署（Vercel / Fly.io）未做——需帳號與 secrets。
+1. 部署（Cloudflare Pages / Fly.io）未做——需帳號與 secrets。
 2. 已知：前端 bundle 6.1 MB / gz 1.35 MB（Babylon barrel import）→ 之後改 deep import 或
    `manualChunks`（§七 bundle budget，Phase 2–3）。CI 目前只「報告」大小不擋。
 
@@ -371,8 +380,8 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 1. 前端 LiveKit 整合。← ✅ 完成，見下一則「Phase 1 現況（前端 LiveKit）」
 2. **Postgres**：聊天記錄持久化目前只在記憶體，重啟就消失。← ✅ 完成，見下方
    「Phase 1 現況（2026-09-17）—— Postgres 聊天持久化」
-3. 部署（Vercel / Fly.io）——同 Phase 0，待帳號；**LiveKit 的 secrets 之後要放 Fly secrets**，
-   不能跟著 `.env` 進版控（本來就沒進，這裡再提醒一次）。
+3. 部署（Cloudflare Pages / Fly.io）——同 Phase 0，待帳號；**LiveKit 的 secrets 之後要放
+   Fly secrets**，不能跟著 `.env` 進版控（本來就沒進，這裡再提醒一次）。
 
 #### Phase 1 現況（2026-09-14 補二）—— 前端 LiveKit
 
@@ -610,7 +619,7 @@ Monorepo（pnpm workspace + Go module + 一個 Python/Node 的 ai-agent），用
 ### Pipeline
 | Pipeline | 觸發 | 步驟 |
 |---|---|---|
-| **web** | PR + main | pnpm install（cache）→ `tsc --noEmit` → `eslint` → `vitest` → `vite build` + bundle size budget（Babylon + assets 容易肥）→ PR 部署 Vercel preview URL → main 部署 production |
+| **web** | PR + main | pnpm install（cache）→ `tsc --noEmit` → `eslint` → `vitest` → `vite build` + bundle size budget（Babylon + assets 容易肥）→ PR 部署 Cloudflare Pages preview URL → main 部署 production |
 | **realtime (Go)** | PR + main | `go vet` → `golangci-lint` → `go test -race ./...` → 用 service container 起 Postgres 跑 migration（`golang-migrate`/`atlas`）驗證 up/down → `docker build` 推 GHCR → main `flyctl deploy`（staging → promote） |
 | **ai-agent** | PR + main | lint + 單元測試（mock LLM/STT/TTS）→ build image → 部署 worker |
 | **assets** | 改到 `assets/` | `gltf-transform` 驗證 + Draco/meshopt 壓縮 + KTX2 轉檔 → 以 content hash 命名上傳 R2/S3 |
