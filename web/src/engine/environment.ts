@@ -10,9 +10,11 @@ import {
   type Scene,
 } from "@babylonjs/core";
 
-/** Inner walkable rectangle of the Cafe, in world units (centred on origin). */
-export const ROOM_HALF_X = 11;
-export const ROOM_HALF_Z = 8;
+/** Inner walkable rectangle of the Cafe, in world units (centred on origin).
+ * The server's spawn point mirrors ROOM_HALF_Z - 2 (realtime/internal/game/client.go
+ * spawnZ) — change both together. */
+export const ROOM_HALF_X = 14;
+export const ROOM_HALF_Z = 10;
 
 export interface TableMarker {
   n: number;
@@ -53,7 +55,8 @@ export interface Environment {
 
 /** Zone radius in metres — bigger than a table's seats, smaller than half the
  * gap between tables so neighbouring zones don't overlap (see the row/col gap
- * math below: half of the tighter axis is 2.0 m). */
+ * math below: half of the tighter axis is ~2.67 m at the current room size —
+ * it only grows if the room does, so 1.8 stays safe). */
 const ZONE_RADIUS = 1.8;
 
 /**

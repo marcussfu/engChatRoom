@@ -21,7 +21,7 @@ const (
 	// so this only covers the one tick between join and that first input — and
 	// any future non-web client. Replace with server-assigned spawn points when
 	// scene definitions land (docs/PLAN.md §一.A "spawn points").
-	spawnZ = 6
+	spawnZ = 8
 )
 
 // Client is one connected browser. Its state is owned by the Room; the Room's

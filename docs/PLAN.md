@@ -527,7 +527,9 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 ### Phase 2 — 產品化 + 語言交換模式 + 初階 AI
 - Auth（Clerk/Supabase）含 guest；邀請連結落地頁。
 - Avatar 自訂（Ready Player Me 整合）。
-- 多房間 + Reception/中庭 + 側邊欄（Spaces/Channels/Guests、房間人數）、org/space/room 路由。
+- ~~多房間 + Reception/中庭 + 側邊欄（Spaces/Channels/Guests、房間人數）、org/space/room 路由。~~
+  **2026-09-21 決定暫不做**：使用者說「就這一間房間，空間增大一點就好，目前不需要多房間」——
+  改成把 Cafe 放大（22×16 → 28×20），Reception/側邊欄/org-space-room 路由整包延後，需要時再議。
 - navmesh 尋路（`RecastJSPlugin`）取代簡易移動；攝影機遇牆淡出。
 - 牆面嵌入：圖片 / 網頁 / YouTube / 白板（tldraw 或 Excalidraw）/ 計時器 widget。
 - 狀態（In a meeting / Focus time…）、emote / 舉手。
