@@ -33,6 +33,26 @@ type Client struct {
 
 	// Guarded by room.mu.
 	state protocol.PlayerState
+
+	// Wrong host keys this connection has tried. Touched only by this
+	// client's readPump goroutine, so it needs no lock.
+	hostFailures int
+}
+
+// trySend queues a message for this client only, dropping it if the queue is
+// full. Only safe to call from this client's own readPump goroutine: the send
+// channel is closed by Room.remove, which ServeWS calls only after readPump has
+// returned, so the two can never overlap. (Everything else reaches a client's
+// channel via the room's broadcast helpers, which hold the lock remove takes.)
+func (c *Client) trySend(m protocol.ServerMsg) {
+	buf, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	select {
+	case c.send <- buf:
+	default:
+	}
 }
 
 func newClient(conn *websocket.Conn, room *Room, id, color string) *Client {
@@ -100,6 +120,8 @@ func (c *Client) readPump(ctx context.Context) {
 			name := c.state.Name
 			c.room.mu.RUnlock()
 			c.room.broadcastChat(c.state.ID, name, body)
+		case "host":
+			c.room.handleHost(c, msg)
 		default:
 			// ignore unknown message types for forward-compat
 		}

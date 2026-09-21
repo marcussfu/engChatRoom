@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/marcussfu/engchatroom/realtime/internal/event"
 	"github.com/marcussfu/engchatroom/realtime/internal/protocol"
 )
 
@@ -43,6 +44,11 @@ type Room struct {
 	tickRate int
 	store    ChatStore // nil disables chat persistence
 
+	// The language-exchange session (its own lock — never held while taking mu)
+	// and the shared secret hosts must present; empty disables host commands.
+	session *event.Session
+	hostKey string
+
 	mu       sync.RWMutex
 	clients  map[*Client]struct{}
 	colorSeq int
@@ -56,6 +62,7 @@ func NewRoom(tickRate int) *Room {
 	return &Room{
 		tickRate: tickRate,
 		clients:  make(map[*Client]struct{}),
+		session:  &event.Session{},
 	}
 }
 
@@ -63,6 +70,13 @@ func NewRoom(tickRate int) *Room {
 // not safe to change concurrently with broadcastChat/ServeWS.
 func (r *Room) SetChatStore(s ChatStore) {
 	r.store = s
+}
+
+// SetHostKey sets the shared secret that authorises host commands (see
+// host.go). Empty — the default — disables them entirely. Call once before
+// serving traffic.
+func (r *Room) SetHostKey(key string) {
+	r.hostKey = key
 }
 
 // Run broadcasts a snapshot every tick until ctx is cancelled. Idle ticks (no
@@ -79,8 +93,19 @@ func (r *Room) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.broadcastSnapshot()
+			// The same tick drives the language-exchange session's clock, so a
+			// round boundary reaches clients within one tick of the deadline.
+			if st, changed := r.session.Tick(time.Now()); changed {
+				r.broadcastSession(st)
+			}
 		}
 	}
+}
+
+// broadcastSession tells every client the session's current state. Now rides
+// along so clients can correct for clock skew when counting down to RoundEndsAt.
+func (r *Room) broadcastSession(st protocol.SessionState) {
+	r.broadcastCtl(protocol.ServerMsg{T: "session", Session: &st, Now: time.Now().UnixMilli()})
 }
 
 func (r *Room) broadcastSnapshot() {
@@ -232,6 +257,12 @@ func (r *Room) ServeWS(w http.ResponseWriter, req *http.Request) {
 		if buf, err := json.Marshal(m); err == nil {
 			client.send <- buf
 		}
+	}
+	// Always send the session state, even when idle: a reconnecting client
+	// may be holding stale "running" state from before it dropped.
+	st := r.session.Snapshot()
+	if buf, err := json.Marshal(protocol.ServerMsg{T: "session", Session: &st, Now: time.Now().UnixMilli()}); err == nil {
+		client.send <- buf
 	}
 
 	r.add(client)

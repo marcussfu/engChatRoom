@@ -53,6 +53,17 @@ func main() {
 		log.Println("DATABASE_URL not set — chat history is in-memory only for this run")
 	}
 
+	// The host console (start/next/extend/end a language-exchange session)
+	// needs a shared secret — there are no accounts yet to hang a "host" role
+	// on. Unset means nobody can host, which is the safe default for a public
+	// deployment.
+	if key := os.Getenv("HOST_KEY"); key != "" {
+		room.SetHostKey(key)
+		log.Println("host controls enabled (HOST_KEY set)")
+	} else {
+		log.Println("HOST_KEY not set — the host console is disabled")
+	}
+
 	go room.Run(ctx)
 
 	mux := http.NewServeMux()
