@@ -1,4 +1,4 @@
-import type { ClientMsg, InputMsg, ServerMsg } from "./types";
+import type { ClientMsg, HostMsg, InputMsg, ServerMsg } from "./types";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
@@ -8,6 +8,8 @@ export interface NetHandlers {
   onSnapshot?: (msg: Extract<ServerMsg, { t: "snapshot" }>) => void;
   onLeave?: (id: string) => void;
   onChat?: (msg: Extract<ServerMsg, { t: "chat" }>) => void;
+  onSession?: (msg: Extract<ServerMsg, { t: "session" }>) => void;
+  onHostResult?: (msg: Extract<ServerMsg, { t: "hostResult" }>) => void;
 }
 
 const DEFAULT_URL = "ws://localhost:8787/ws";
@@ -75,6 +77,12 @@ export class Net {
         case "chat":
           this.h.onChat?.(msg);
           break;
+        case "session":
+          this.h.onSession?.(msg);
+          break;
+        case "hostResult":
+          this.h.onHostResult?.(msg);
+          break;
       }
     };
 
@@ -96,6 +104,10 @@ export class Net {
     const trimmed = body.trim();
     if (!trimmed) return;
     this.send({ t: "chat", body: trimmed });
+  }
+
+  sendHost(msg: HostMsg): void {
+    this.send(msg);
   }
 
   private send(msg: ClientMsg): void {

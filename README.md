@@ -60,6 +60,20 @@ pnpm dev
 3. 啟動 realtime 伺服器時如果印出 `LiveKit token endpoint enabled at /token` 代表接上了；
    沒設環境變數也能正常跑，只是 `/token` 會停用（訊息裡會說明）。
 
+### 語言交換活動模式（主持人）
+
+咖啡廳的核心玩法：主持人開一場活動，分成 N 輪，每輪有計時和一個話題，**每輪結束坐黑椅的人自動
+換到下一桌**（桌 16 → 桌 1 環繞），白椅的人不動——所以每一輪都會遇到新的對話夥伴。
+
+1. `realtime/.env` 加一行 `HOST_KEY=隨便取一個只有你知道的字串`（沒設就沒人能當主持人），重啟 server。
+2. 瀏覽器右下角 **🎓 主持** → 填入同一個金鑰 → 設定輪數、每輪幾分鐘、話題（每行一個，留空用內建話題；
+   話題比輪數少會循環使用）→ **▶ 開始活動**。金鑰只存在你自己瀏覽器的 localStorage。
+3. 活動中畫面上方會顯示「第 N / M 輪 · 倒數 · 話題」；每輪換輪時所有人會看到通知，黑椅的人會自己站起來
+   走去下一桌。主持人可以 **⏭ 下一輪 / ＋1、＋5 分鐘 / ⏹ 結束活動**。
+4. 中途才進來的人也會看到目前進度（倒數以 server 時間為準，不受各人電腦時鐘影響）。
+
+沒有帳號系統前，「主持人」就是「知道 `HOST_KEY` 的人」；同一條連線猜錯 5 次金鑰會被擋，重新整理才能再試。
+
 ### 聊天記錄持久化（Postgres，選用）
 
 沒設定也完全能跑，聊天照樣即時互通，只是重啟後歷史會消失、新加入的人看不到之前的對話。
@@ -128,6 +142,7 @@ engChatRoom/
   realtime/
     cmd/server/           # main：路由 + tick loop 啟動
     internal/game/        # room manager、client、tick、配色、聊天廣播+持久化
+    internal/event/       # 語言交換活動的輪次狀態機（純函式式，時間由呼叫者傳入，好測試）
     internal/livekit/     # LiveKit join token 簽發（POST /token）
     internal/store/       # Postgres：聊天記錄持久化
     internal/protocol/    # wire 訊息定義（與 web/src/net/types.ts 同步）

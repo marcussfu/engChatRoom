@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Game } from "./engine/Game";
 import type { MediaStatus } from "./media/livekit";
 import type { ConnStatus } from "./net/socket";
+import type { SessionState } from "./net/types";
 import { Chat, type ChatEntry } from "./ui/Chat";
 import { DeviceMenu } from "./ui/DeviceMenu";
+import { HostConsole } from "./ui/HostConsole";
 import { Hud } from "./ui/Hud";
+import { RoundNotice, type Notice } from "./ui/RoundNotice";
+import { SessionPanel } from "./ui/SessionPanel";
 
 function guestName(): string {
   const key = "engchatroom.name";
@@ -23,11 +27,14 @@ function zoneLabel(zoneId: string): string {
 }
 
 const MAX_CHAT_HISTORY = 100;
+const NOTICE_MS = 8000;
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   const selfIdRef = useRef("");
+  const sessionActiveRef = useRef(false);
+  const noticeTimerRef = useRef<number | undefined>(undefined);
   const [status, setStatus] = useState<ConnStatus>("connecting");
   const [online, setOnline] = useState(1);
   const [firstPerson, setFirstPerson] = useState(false);
@@ -38,6 +45,16 @@ export function App() {
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [screenShareEnabled, setScreenShareEnabled] = useState(false);
   const [headphonesMode, setHeadphonesMode] = useState(false);
+  const [session, setSession] = useState<SessionState | null>(null);
+  const [clockOffset, setClockOffset] = useState(0);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [hostResult, setHostResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  const showNotice = useCallback((n: Notice) => {
+    setNotice(n);
+    window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), NOTICE_MS);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -57,6 +74,26 @@ export function App() {
       onCameraEnabled: setCameraEnabled,
       onScreenShareEnabled: setScreenShareEnabled,
       onHeadphonesMode: setHeadphonesMode,
+      onSession: (s, offset) => {
+        setSession(s);
+        setClockOffset(offset);
+        // Announce a session *starting* — but not to someone who joins partway
+        // through (round > 1), who'd just see a stale "started" banner.
+        if (s.active && !sessionActiveRef.current && s.round === 1) {
+          showNotice({ title: "活動開始！", body: `第 1 / ${s.rounds} 輪 · 話題：${s.topic}` });
+        }
+        sessionActiveRef.current = s.active;
+      },
+      onRoundChange: (info) => {
+        showNotice({
+          title: `第 ${info.round} / ${info.rounds} 輪開始`,
+          body:
+            info.rotateToTable !== null
+              ? `黑椅的朋友請移到桌 ${info.rotateToTable} · 話題：${info.topic}`
+              : `話題：${info.topic}`,
+        });
+      },
+      onHostResult: (ok, error) => setHostResult({ ok, error }),
       onChat: (msg) => {
         setMessages((prev) =>
           [
@@ -69,10 +106,11 @@ export function App() {
     gameRef.current = game;
 
     return () => {
+      window.clearTimeout(noticeTimerRef.current);
       game.dispose();
       gameRef.current = null;
     };
-  }, []);
+  }, [showNotice]);
 
   return (
     <>
@@ -96,6 +134,9 @@ export function App() {
         onToggleHeadphones={() => gameRef.current?.toggleHeadphones()}
       />
       <DeviceMenu game={gameRef.current} enabled={mediaStatus === "connected"} />
+      <SessionPanel session={session} clockOffsetMs={clockOffset} />
+      <RoundNotice notice={notice} />
+      <HostConsole game={gameRef.current} session={session} result={hostResult} />
       <Chat messages={messages} onSend={(body) => gameRef.current?.sendChat(body)} />
     </>
   );

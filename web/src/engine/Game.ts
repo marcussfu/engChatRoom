@@ -10,11 +10,12 @@ import "@babylonjs/core/Culling/ray"; // enables scene.pick for click-to-move
 import { Media, type MediaStatus } from "../media/livekit";
 import { Net, resolveRealtimeUrl, type ConnStatus } from "../net/socket";
 import { fetchLiveKitToken } from "../net/tokenClient";
-import type { Anim, ChatMsg } from "../net/types";
+import type { Anim, ChatMsg, SessionState } from "../net/types";
 import { CameraRig } from "./cameraRig";
 import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environment";
 import { LocalPlayer } from "./localPlayer";
 import { RemotePlayers } from "./remotePlayers";
+import { rotationTarget } from "./rotation";
 
 const MOVE_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
@@ -23,6 +24,21 @@ const MOVE_KEYS = new Set([
 const SEND_INTERVAL_MS = 50;
 const ACTIVITY_WINDOW_MS = 400;
 const HEAD_Y = 1.4;
+
+/** What the UI needs to announce a new round. */
+export interface RoundChangeInfo {
+  round: number;
+  rounds: number;
+  topic: string;
+  /** Set when *this* player was in a black chair and is now walking to that table. */
+  rotateToTable: number | null;
+}
+
+export interface HostStartConfig {
+  rounds: number;
+  roundSeconds: number;
+  topics: string[];
+}
 
 export interface GameOptions {
   name: string;
@@ -40,6 +56,13 @@ export interface GameOptions {
   onCameraEnabled?: (on: boolean) => void;
   onScreenShareEnabled?: (on: boolean) => void;
   onHeadphonesMode?: (on: boolean) => void;
+  /** Every session update from the server. `clockOffsetMs` is (server now −
+   * client now) at receipt, for counting down against the server's clock. */
+  onSession?: (state: SessionState, clockOffsetMs: number) => void;
+  /** The round advanced (timer ran out or host skipped). */
+  onRoundChange?: (info: RoundChangeInfo) => void;
+  /** Answer to a host command we sent. */
+  onHostResult?: (ok: boolean, error?: string) => void;
 }
 
 /**
@@ -59,6 +82,9 @@ export class Game {
   private readonly opts: GameOptions;
   private readonly zones: ZoneMarker[];
   private readonly seatByMesh = new Map<string, SeatMarker>();
+  private readonly seatById = new Map<string, SeatMarker>();
+  private readonly tableCount: number;
+  private session: SessionState | null = null;
 
   private activityUntil = 0;
   private lastSendAt = 0;
@@ -83,7 +109,11 @@ export class Game {
     this.local = new LocalPlayer(this.scene, env.tables, "#c8c8c8", env.shadows);
     this.remotes = new RemotePlayers(this.scene, env.shadows);
     this.zones = env.zones;
-    for (const seat of env.seats) this.seatByMesh.set(`seat${seat.id}`, seat);
+    this.tableCount = env.tables.length;
+    for (const seat of env.seats) {
+      this.seatByMesh.set(`seat${seat.id}`, seat);
+      this.seatById.set(seat.id, seat);
+    }
 
     this.wsUrl = resolveRealtimeUrl(opts.url);
     this.media = new Media({
@@ -139,6 +169,19 @@ export class Game {
           this.bump();
         },
         onChat: (msg) => this.opts.onChat?.(msg),
+        onSession: (m) => {
+          const prev = this.session;
+          this.session = m.session;
+          this.opts.onSession?.(m.session, m.now - Date.now());
+          // Only a round *advancing within a running session* rotates people. A
+          // state that merely arrives (we just joined, or reconnected to the same
+          // round) must not shove anyone around.
+          if (prev?.active && m.session.active && m.session.round > prev.round) {
+            this.onRoundAdvanced(m.session, m.session.round - prev.round);
+          }
+          this.bump();
+        },
+        onHostResult: (m) => this.opts.onHostResult?.(m.ok === true, m.error),
       },
       this.wsUrl,
     );
@@ -285,6 +328,46 @@ export class Game {
 
   sendChat(body: string): void {
     this.net.sendChat(body);
+  }
+
+  // --- Language-exchange session ------------------------------------------
+
+  /** A new round began. Black-chair (rotator) players stand up and walk to the
+   * next table's black chair; everyone else stays put. The server doesn't know
+   * about seats — this is derived purely from the round number. */
+  private onRoundAdvanced(s: SessionState, steps: number): void {
+    const targetId = rotationTarget(this.local.seatId, this.tableCount, steps);
+    const target = targetId ? this.seatById.get(targetId) : undefined;
+    if (target) {
+      // Everyone in a black chair leaves at once, so the seat we're heading to
+      // is being vacated at the same moment — deliberately no occupancy check
+      // (unlike trySit, which guards a manual click).
+      this.local.standUp();
+      this.local.walkToSeat(target);
+      this.forceSend = true;
+    }
+    this.opts.onRoundChange?.({
+      round: s.round,
+      rounds: s.rounds,
+      topic: s.topic,
+      rotateToTable: target ? target.table : null,
+    });
+  }
+
+  hostStart(key: string, cfg: HostStartConfig): void {
+    this.net.sendHost({ t: "host", action: "start", key, ...cfg });
+  }
+
+  hostNext(key: string): void {
+    this.net.sendHost({ t: "host", action: "next", key });
+  }
+
+  hostExtend(key: string, seconds: number): void {
+    this.net.sendHost({ t: "host", action: "extend", key, seconds });
+  }
+
+  hostEnd(key: string): void {
+    this.net.sendHost({ t: "host", action: "end", key });
   }
 
   private zoneAt(x: number, z: number): string | undefined {

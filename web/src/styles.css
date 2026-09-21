@@ -180,6 +180,134 @@ body,
   color: #000; /* native dropdown list renders on a light popup in most browsers */
 }
 
+/* Language-exchange session: scoreboard, round banner, host console. */
+.session {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 240px;
+  max-width: min(560px, calc(100vw - 28px));
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  text-align: center;
+  pointer-events: none;
+}
+.session--finished {
+  background: rgba(46, 194, 107, 0.6);
+}
+.session__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.session__clock {
+  font-variant-numeric: tabular-nums;
+}
+.session__clock--urgent {
+  color: #ffb224;
+}
+.session__topic {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.95;
+}
+
+.notice {
+  position: fixed;
+  top: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(640px, calc(100vw - 28px));
+  padding: 14px 24px;
+  border-radius: 14px;
+  background: rgba(0, 120, 255, 0.88);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: notice-pop 0.25s ease-out;
+}
+.notice__title {
+  font-size: 20px;
+  font-weight: 700;
+}
+.notice__body {
+  margin-top: 4px;
+  font-size: 14px;
+}
+@keyframes notice-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.host {
+  position: fixed;
+  right: 14px;
+  bottom: 56px;
+  z-index: 1;
+}
+.host__panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(300px, calc(100vw - 28px));
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  color: #fff;
+}
+.host__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.host__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.host__row input,
+.host__row textarea {
+  font: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-width: 0;
+  resize: vertical;
+}
+.host__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.host__result {
+  font-size: 12.5px;
+}
+.host__result--error {
+  color: #ff8a8a;
+}
+
 .chat {
   position: fixed;
   left: 14px;
