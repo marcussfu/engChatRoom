@@ -17,6 +17,9 @@ realtime/tmp/
 .env.local
 *.local
 
+# Claude Code per-machine permission settings
+.claude/settings.local.json
+
 # Editor / OS
 .DS_Store
 .idea/
