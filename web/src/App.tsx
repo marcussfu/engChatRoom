@@ -89,7 +89,7 @@ export function App() {
           title: `第 ${info.round} / ${info.rounds} 輪開始`,
           body:
             info.rotateToTable !== null
-              ? `黑椅的朋友請移到桌 ${info.rotateToTable} · 話題：${info.topic}`
+              ? `想認識新夥伴？可以移到桌 ${info.rotateToTable}（自行決定）· 話題：${info.topic}`
               : `話題：${info.topic}`,
         });
       },

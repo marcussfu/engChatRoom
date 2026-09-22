@@ -30,7 +30,8 @@ export interface RoundChangeInfo {
   round: number;
   rounds: number;
   topic: string;
-  /** Set when *this* player was in a black chair and is now walking to that table. */
+  /** Set when *this* player is in a black chair: the table they could move to
+   * for a new partner. A suggestion only — the player decides whether to go. */
   rotateToTable: number | null;
 }
 
@@ -332,20 +333,14 @@ export class Game {
 
   // --- Language-exchange session ------------------------------------------
 
-  /** A new round began. Black-chair (rotator) players stand up and walk to the
-   * next table's black chair; everyone else stays put. The server doesn't know
-   * about seats — this is derived purely from the round number. */
+  /** A new round began. This only ever *suggests* a move — a black-chair
+   * (rotator) player currently seated gets told which table to try next for a
+   * new partner, but nobody is walked there automatically; moving is always
+   * their own click. The server doesn't know about seats — the suggestion is
+   * derived purely from the round number. */
   private onRoundAdvanced(s: SessionState, steps: number): void {
     const targetId = rotationTarget(this.local.seatId, this.tableCount, steps);
     const target = targetId ? this.seatById.get(targetId) : undefined;
-    if (target) {
-      // Everyone in a black chair leaves at once, so the seat we're heading to
-      // is being vacated at the same moment — deliberately no occupancy check
-      // (unlike trySit, which guards a manual click).
-      this.local.standUp();
-      this.local.walkToSeat(target);
-      this.forceSend = true;
-    }
     this.opts.onRoundChange?.({
       round: s.round,
       rounds: s.rounds,
