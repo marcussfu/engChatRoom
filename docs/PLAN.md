@@ -150,8 +150,24 @@
 >   狀態（有空聊天/開會中/用餐中/專注中，走 `input` 訊息，跟 zoneId/seatId 同模式）、
 >   emote（揮手/拍手/愛心/大笑，走獨立一次性訊息，跟 chat 同模式）、舉手（切換式）。
 >   前端畫在 `DynamicTexture` 貼圖平面上（佔位 avatar 沒骨架做不了真動作）。全綠含 6 個新
->   Go 測試，見下方「Phase 2 現況（2026-09-23）」。**同樣完全沒用瀏覽器實測**——下次先測這個
->   加上前幾天累積的語言交換活動，一次驗收；之後選 navmesh 或牆上 TIMER 看板。
+>   Go 測試，見下方「Phase 2 現況（2026-09-23）」。
+>   **首次瀏覽器實測回報 bug**：兩個分頁互按狀態/emote，對方畫面看不到。逐檔重查
+>   `Game.ts`→`socket.ts`→Go `client.go`/`room.go`→`socket.ts`→`remotePlayers.ts` 整條
+>   收發/渲染路徑兩遍，邏輯全部正確，唯一找到的真程式碼缺陷是
+>   `remotePlayers.ts`（`paintIcon`）畫 emoji 用 `ctx.font = "...px serif"`——generic
+>   serif 字型不保證有彩色 emoji 字形，canvas 2D context 是否 fallback 到系統 emoji 字型
+>   本來就是知名的跨瀏覽器/OS 不一致行為；已修成明確指定
+>   `"Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif`（`920efc7`）。
+>   但 root cause 其實是**使用者的 `go run ./cmd/server` 沒重啟**——移動照樣同步（那段
+>   程式改之前就存在），但狀態/emote 需要的新程式碼在舊 process 裡完全不存在，訊息被
+>   靜默忽略；請使用者確認重啟 realtime 伺服器（`go run` 不會 hot reload）後，**狀態/emote
+>   雙分頁互相可見，實測通過**。
+>   **教訓記一下**：往後任何「改完程式碼、行為卻沒變」的回報，先確認 Go server process
+>   真的重啟過（而不是只重整瀏覽器），這比懷疑程式邏輯划算得多——這次浪費了兩輪完整程式碼
+>   複查才想到問這個。
+>   下一步候選：navmesh 或牆上實體 TIMER 看板（使用者還沒選）；語言交換活動 + 狀態/emote
+>   合併驗收已完成。語音/視訊瀏覽器驗收清單仍等能測麥克風/鏡頭的環境。
+>   **收工檢查點（2026-09-23）**：`920efc7` 已 push，工作區乾淨。
 
 ## Context（為什麼做這個）
 
@@ -662,8 +678,9 @@ README 同步更新用語。前端 typecheck/lint/vitest 全綠（`rotation.test
 - 全綠：web `typecheck`/`lint`/`vitest(21)`/`build`；realtime `gofmt`/`vet`/`build`/`test`。
 
 **已知限制**
-1. **完全沒用瀏覽器實測**——貼圖大小/位置是否好看、多個徽章疊在一起會不會太擠、
-   emote 飄浮動畫節奏，都要實測才知道。
+1. **已瀏覽器實測通過**（2026-09-23，雙分頁）：狀態徽章、emote 特效互相可見。修過
+   emoji 字型 fallback（見上）；貼圖大小/位置是否好看、多個徽章疊在一起會不會太擠、
+   emote 飄浮動畫節奏，實測時沒特別回報問題，暫不追加調整。
 2. 底部工具列（狀態/emote）跟左下角聊天框、右下角主持面板在窄螢幕（手機寬度）可能會擠在一起，
    沒有特別做防重疊，維持這個專案目前「先求功能對、外觀之後再調」的一貫做法。
 3. 狀態/emote 都只是圖示，不是真的動作動畫（見上）。
