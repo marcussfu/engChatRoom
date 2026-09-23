@@ -1,4 +1,4 @@
-import type { ClientMsg, HostMsg, InputMsg, ServerMsg } from "./types";
+import type { ClientMsg, EmoteKind, HostMsg, InputMsg, ServerMsg } from "./types";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
@@ -10,6 +10,7 @@ export interface NetHandlers {
   onChat?: (msg: Extract<ServerMsg, { t: "chat" }>) => void;
   onSession?: (msg: Extract<ServerMsg, { t: "session" }>) => void;
   onHostResult?: (msg: Extract<ServerMsg, { t: "hostResult" }>) => void;
+  onEmote?: (msg: Extract<ServerMsg, { t: "emote" }>) => void;
 }
 
 const DEFAULT_URL = "ws://localhost:8787/ws";
@@ -83,6 +84,9 @@ export class Net {
         case "hostResult":
           this.h.onHostResult?.(msg);
           break;
+        case "emote":
+          this.h.onEmote?.(msg);
+          break;
       }
     };
 
@@ -108,6 +112,10 @@ export class Net {
 
   sendHost(msg: HostMsg): void {
     this.send(msg);
+  }
+
+  sendEmote(emote: EmoteKind): void {
+    this.send({ t: "emote", emote });
   }
 
   private send(msg: ClientMsg): void {

@@ -308,6 +308,49 @@ body,
   color: #ff8a8a;
 }
 
+/* Status picker + emotes + raise hand — bottom-center, above the control hint. */
+.statusbar {
+  position: fixed;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.statusbar__select {
+  font: inherit;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  padding: 6px 10px;
+  backdrop-filter: blur(4px);
+}
+.statusbar__select option {
+  color: #000; /* native dropdown list renders on a light popup in most browsers */
+}
+
+.statusbar__emote {
+  border: 0;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  backdrop-filter: blur(4px);
+}
+.statusbar__emote:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+.statusbar__emote--active {
+  background: rgba(255, 178, 36, 0.8);
+}
+
 .chat {
   position: fixed;
   left: 14px;

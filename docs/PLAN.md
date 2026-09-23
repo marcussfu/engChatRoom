@@ -146,6 +146,12 @@
 >   **明天第一件事**：請使用者重新整理測一次改過的版本（橫幅文字變「可以移到」而非「請移到」，
 >   確認真的不會自動走）；沒問題就往下做（狀態/emote → navmesh → 牆上 TIMER 看板，使用者
 >   還沒選）。語音/視訊驗收清單仍等能測麥克風的環境。
+> - 2026-09-23：使用者測過純提示版本正常。三選一選了**狀態/emote**（最小的）。做完：
+>   狀態（有空聊天/開會中/用餐中/專注中，走 `input` 訊息，跟 zoneId/seatId 同模式）、
+>   emote（揮手/拍手/愛心/大笑，走獨立一次性訊息，跟 chat 同模式）、舉手（切換式）。
+>   前端畫在 `DynamicTexture` 貼圖平面上（佔位 avatar 沒骨架做不了真動作）。全綠含 6 個新
+>   Go 測試，見下方「Phase 2 現況（2026-09-23）」。**同樣完全沒用瀏覽器實測**——下次先測這個
+>   加上前幾天累積的語言交換活動，一次驗收；之後選 navmesh 或牆上 TIMER 看板。
 
 ## Context（為什麼做這個）
 
@@ -553,7 +559,8 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
   改成把 Cafe 放大（22×16 → 28×20），Reception/側邊欄/org-space-room 路由整包延後，需要時再議。
 - navmesh 尋路（`RecastJSPlugin`）取代簡易移動；攝影機遇牆淡出。
 - 牆面嵌入：圖片 / 網頁 / YouTube / 白板（tldraw 或 Excalidraw）/ 計時器 widget。
-- 狀態（In a meeting / Focus time…）、emote / 舉手。
+- 狀態（In a meeting / Focus time…）、emote / 舉手。← ✅ **程式碼完成（2026-09-23）**，見下方
+  「Phase 2 現況」。
 - **語言交換活動模式**：座位 anchor/rotator（白/黑）角色、輪次計時器 + 到點換桌提示、TOPIC 卡輪播、
   Host 控制台（開始 / 下一輪 / 加時 / 結束）。← ✅ **程式碼完成（2026-09-21）**，見下方
   「Phase 2 現況」；牆上實體 TIMER 看板與瀏覽器實測未做。
@@ -620,6 +627,46 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 README 同步更新用語。前端 typecheck/lint/vitest 全綠（`rotation.test.ts` 本來就沒測「有沒有移動」，
 只測純函式邏輯，這次不用改）。
 5. 主持人身分是共用金鑰，等 Auth 進來後才會改成真的角色。
+
+#### Phase 2 現況（2026-09-23）—— 狀態 / Emote / 舉手
+
+使用者選這項當 Phase 2 下一個切入點（三選一：狀態/emote／navmesh／牆上 TIMER 看板，選了最小的）。
+
+**已完成**
+- `protocol`：狀態常數 `StatusPresent`(="")/`StatusMeeting`/`StatusLunch`/`StatusFocus`、
+  emote 常數 `EmoteWave`/`EmoteClap`/`EmoteHeart`/`EmoteLaugh`。**狀態/舉手走既有的 `input`
+  訊息**（跟 `zoneId`/`seatId` 同一套模式：持續狀態，`PlayerState` 帶著、隨 snapshot 廣播，
+  `omitempty`）；**emote 是獨立的一次性訊息**（跟 `chat` 同一套模式：`Room.broadcastCtl`
+  立即發、不等 tick、不進 `PlayerState`——它是「發生過一次」不是「持續狀態」）。
+- `game`：`clampStatus`（不合法值一律當 `present`，容忍前後端型別暫時不同步）、
+  `clampEmote`（不合法直接丟棄不廣播）。6 個新測試（純函式 2 個 + WebSocket 整合 4 個：
+  狀態/舉手隨 snapshot 送達、不合法狀態確實變回 present、emote 廣播給所有人、不合法 emote
+  真的沒被廣播——用「送一個壞的再送一個好的，確認收到的是好的」間接驗證，不用等一段
+  「確認沒收到」的逾時）。
+- 前端 `engine/remotePlayers.ts`：狀態徽章 + emote 特效都是**畫在 `DynamicTexture` 上的
+  emoji，貼在一塊永遠面向鏡頭的小平面**（佔位 avatar 沒有臉/骨架，做不了真的表情/動作，
+  等真的 rigged avatar 進來才有意義，同 sit 動作那個已知限制）。舉手優先權比狀態圖示高
+  （比較緊急）；「有空聊天」（預設值）不顯示圖示，避免大家頭上都掛著徽章很吵。emote 特效
+  往上飄 0.5 公尺、2 秒內淡出，之後自己 dispose 掉（plane + texture 都要手動清，不能只靠
+  `node.dispose()` 遞迴，跟 video billboard 那次一樣的坑）。`update()` 從「地圖是空的就直接
+  return false」改成「remote 插值 + emote 動畫都要算」，因為本地玩家自己發的 emote 用
+  `spawnEmoteAt(position, emote)`（不掛在任何 remote 節點上，因為那是「自己」的特效，
+  `RemotePlayers` 本來就不追蹤自己）。
+- `Game.ts`：`setStatus()`/`toggleRaisedHand()` 改本地狀態、`forceSend=true` 讓下一次
+  `sendInput()` 立刻帶新值出去（不用等節流）；`sendEmote()` **樂觀本地先播放**（不等 server
+  echo 回來才顯示自己的動畫）＋送出訊息；`onEmote` 收到別人的 emote 才呼叫
+  `remotes.spawnEmote()`（比對 `selfId` 排除自己，因為自己已經樂觀播過了）。
+- UI：`ui/StatusBar.tsx`（畫面下方中間，狀態下拉 + 4 個 emote 按鈕 + 舉手切換），不需要
+  LiveKit 已連線就能用（跟 Headphones Mode 一樣是純本地/WS 邏輯，不依賴媒體連線）。
+- README 補使用說明。
+- 全綠：web `typecheck`/`lint`/`vitest(21)`/`build`；realtime `gofmt`/`vet`/`build`/`test`。
+
+**已知限制**
+1. **完全沒用瀏覽器實測**——貼圖大小/位置是否好看、多個徽章疊在一起會不會太擠、
+   emote 飄浮動畫節奏，都要實測才知道。
+2. 底部工具列（狀態/emote）跟左下角聊天框、右下角主持面板在窄螢幕（手機寬度）可能會擠在一起，
+   沒有特別做防重疊，維持這個專案目前「先求功能對、外觀之後再調」的一貫做法。
+3. 狀態/emote 都只是圖示，不是真的動作動畫（見上）。
 
 ### Phase 3 — 擴增 + 進階 AI + 打磨
 - Interest management（grid / octree，只送附近實體）；Redis/NATS pub/sub、多實例、依 room sharding。

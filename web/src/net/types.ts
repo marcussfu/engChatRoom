@@ -3,6 +3,13 @@
 
 export type Anim = "idle" | "walk";
 
+/** "present" (the default) is never sent over the wire — a missing `status`
+ * on PlayerState means present. */
+export type PlayerStatus = "present" | "meeting" | "lunch" | "focus";
+
+/** A transient action, not part of PlayerState — see EmoteMsg. */
+export type EmoteKind = "wave" | "clap" | "heart" | "laugh";
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -13,6 +20,8 @@ export interface PlayerState {
   color: string;
   zoneId?: string;
   seatId?: string;
+  status?: PlayerStatus;
+  raisedHand?: boolean;
 }
 
 export interface WelcomeMsg {
@@ -70,13 +79,23 @@ export interface HostResultMsg {
   error?: string;
 }
 
+/** A one-shot action from `id` — unlike status/raisedHand, this isn't state
+ * that persists; it fires once and every client shows a transient reaction. */
+export interface EmoteMsg {
+  t: "emote";
+  id: string;
+  emote: EmoteKind;
+  ts: number;
+}
+
 export type ServerMsg =
   | WelcomeMsg
   | SnapshotMsg
   | LeaveMsg
   | ChatMsg
   | SessionMsg
-  | HostResultMsg;
+  | HostResultMsg
+  | EmoteMsg;
 
 export interface JoinMsg {
   t: "join";
@@ -91,11 +110,18 @@ export interface InputMsg {
   anim: Anim;
   zoneId?: string;
   seatId?: string;
+  status?: PlayerStatus;
+  raisedHand?: boolean;
 }
 
 export interface SendChatMsg {
   t: "chat";
   body: string;
+}
+
+export interface SendEmoteMsg {
+  t: "emote";
+  emote: EmoteKind;
 }
 
 /** A host-console command. Every one carries the shared secret (HOST_KEY on the
@@ -112,4 +138,4 @@ export type HostMsg =
   | { t: "host"; action: "next" | "end"; key: string }
   | { t: "host"; action: "extend"; key: string; seconds: number };
 
-export type ClientMsg = JoinMsg | InputMsg | SendChatMsg | HostMsg;
+export type ClientMsg = JoinMsg | InputMsg | SendChatMsg | SendEmoteMsg | HostMsg;

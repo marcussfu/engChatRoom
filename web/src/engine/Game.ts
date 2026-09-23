@@ -10,7 +10,7 @@ import "@babylonjs/core/Culling/ray"; // enables scene.pick for click-to-move
 import { Media, type MediaStatus } from "../media/livekit";
 import { Net, resolveRealtimeUrl, type ConnStatus } from "../net/socket";
 import { fetchLiveKitToken } from "../net/tokenClient";
-import type { Anim, ChatMsg, SessionState } from "../net/types";
+import type { Anim, ChatMsg, EmoteKind, PlayerStatus, SessionState } from "../net/types";
 import { CameraRig } from "./cameraRig";
 import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environment";
 import { LocalPlayer } from "./localPlayer";
@@ -66,6 +66,8 @@ export interface GameOptions {
   onHostResult?: (ok: boolean, error?: string) => void;
 }
 
+const DEFAULT_STATUS: PlayerStatus = "present";
+
 /**
  * Phase 0 game shell: Babylon scene + camera rig + local/remote avatars, wired
  * to the realtime server. Renders on demand — the scene is only drawn while
@@ -91,6 +93,9 @@ export class Game {
   private lastSendAt = 0;
   private lastSentAnim: Anim = "idle";
   private zoneId: string | undefined;
+  private status: PlayerStatus = DEFAULT_STATUS;
+  private raisedHand = false;
+  private selfId = "";
   private forceSend = false;
   private mediaReady = false;
   private disposed = false;
@@ -140,6 +145,7 @@ export class Game {
       {
         onStatus: opts.onStatus,
         onWelcome: (id, _tick, color) => {
+          this.selfId = id;
           this.remotes.setSelfId(id);
           this.local.recolor(color);
           this.opts.onSelfId?.(id);
@@ -183,6 +189,14 @@ export class Game {
           this.bump();
         },
         onHostResult: (m) => this.opts.onHostResult?.(m.ok === true, m.error),
+        onEmote: (m) => {
+          // Our own emotes never round-trip back to us as a *visual* here —
+          // sendEmote() already spawns the local burst optimistically (no
+          // reason to wait a network round trip to see your own wave) — so
+          // this only needs to handle everyone else's.
+          if (m.id !== this.selfId) this.remotes.spawnEmote(m.id, m.emote);
+          this.bump();
+        },
       },
       this.wsUrl,
     );
@@ -324,11 +338,39 @@ export class Game {
       anim: this.local.animation,
       zoneId: this.zoneId,
       seatId: this.local.seatId,
+      status: this.status,
+      raisedHand: this.raisedHand,
     });
   }
 
   sendChat(body: string): void {
     this.net.sendChat(body);
+  }
+
+  // --- Status / emote / raised hand ---------------------------------------
+
+  setStatus(status: PlayerStatus): void {
+    if (status === this.status) return;
+    this.status = status;
+    this.forceSend = true;
+    this.bump();
+  }
+
+  toggleRaisedHand(): boolean {
+    this.raisedHand = !this.raisedHand;
+    this.forceSend = true;
+    this.bump();
+    return this.raisedHand;
+  }
+
+  /** Emotes are transient, not part of our continuous state — sent as their
+   * own message (see sendInput for status/raisedHand instead). Spawns our own
+   * burst immediately rather than waiting for it to round-trip back from the
+   * server. */
+  sendEmote(emote: EmoteKind): void {
+    this.net.sendEmote(emote);
+    this.remotes.spawnEmoteAt(new Vector3(this.local.x, 0, this.local.z), emote);
+    this.bump();
   }
 
   // --- Language-exchange session ------------------------------------------

@@ -9,6 +9,7 @@ import { HostConsole } from "./ui/HostConsole";
 import { Hud } from "./ui/Hud";
 import { RoundNotice, type Notice } from "./ui/RoundNotice";
 import { SessionPanel } from "./ui/SessionPanel";
+import { StatusBar } from "./ui/StatusBar";
 
 function guestName(): string {
   const key = "engchatroom.name";
@@ -137,6 +138,7 @@ export function App() {
       <SessionPanel session={session} clockOffsetMs={clockOffset} />
       <RoundNotice notice={notice} />
       <HostConsole game={gameRef.current} session={session} result={hostResult} />
+      <StatusBar game={gameRef.current} />
       <Chat messages={messages} onSend={(body) => gameRef.current?.sendChat(body)} />
     </>
   );

@@ -109,6 +109,8 @@ func (c *Client) readPump(ctx context.Context) {
 			}
 			c.state.ZoneID = msg.ZoneID
 			c.state.SeatID = msg.SeatID
+			c.state.Status = clampStatus(msg.Status)
+			c.state.RaisedHand = msg.RaisedHand
 			c.room.dirty = true
 			c.room.mu.Unlock()
 		case "chat":
@@ -120,6 +122,14 @@ func (c *Client) readPump(ctx context.Context) {
 			name := c.state.Name
 			c.room.mu.RUnlock()
 			c.room.broadcastChat(c.state.ID, name, body)
+		case "emote":
+			emote := clampEmote(msg.Emote)
+			if emote == "" {
+				continue
+			}
+			c.room.broadcastCtl(protocol.ServerMsg{
+				T: "emote", ID: c.state.ID, Emote: emote, Ts: time.Now().UnixMilli(),
+			})
 		case "host":
 			c.room.handleHost(c, msg)
 		default:
@@ -165,4 +175,28 @@ func clampBody(s string) string {
 		r = r[:max]
 	}
 	return string(r)
+}
+
+// clampStatus maps anything that isn't a known status to StatusPresent —
+// treated the same as "the client didn't set one" rather than an error, since
+// a browser's local PlayerStatus type could in principle drift from the
+// server's before both sides redeploy.
+func clampStatus(s string) string {
+	switch s {
+	case protocol.StatusMeeting, protocol.StatusLunch, protocol.StatusFocus:
+		return s
+	default:
+		return protocol.StatusPresent
+	}
+}
+
+// clampEmote returns "" for anything that isn't a known emote — the caller
+// treats that as "ignore this message" (see readPump's "emote" case).
+func clampEmote(e string) string {
+	switch e {
+	case protocol.EmoteWave, protocol.EmoteClap, protocol.EmoteHeart, protocol.EmoteLaugh:
+		return e
+	default:
+		return ""
+	}
 }

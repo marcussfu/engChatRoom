@@ -9,11 +9,31 @@ const (
 	AnimWalk = "walk"
 )
 
+// Status values a player can set (docs/PLAN.md §一.B.8). The empty string
+// means "present" (the default) and is never sent over the wire — see
+// PlayerState.Status's omitempty.
+const (
+	StatusPresent = ""
+	StatusMeeting = "meeting"
+	StatusLunch   = "lunch"
+	StatusFocus   = "focus"
+)
+
+// Emote is a transient action broadcast to everyone — unlike Status, it is
+// NOT part of PlayerState; it fires once and is gone (see Room.broadcastCtl).
+const (
+	EmoteWave  = "wave"
+	EmoteClap  = "clap"
+	EmoteHeart = "heart"
+	EmoteLaugh = "laugh"
+)
+
 // ClientMsg is anything the browser sends to the server.
 //
 //	{"t":"join","name":"marcus"}
 //	{"t":"input","x":1.5,"z":-2.0,"yaw":0.78,"anim":"walk","zoneId":"table3","seatId":"3w"}
 //	{"t":"chat","body":"hi!"}
+//	{"t":"emote","emote":"wave"}
 //	{"t":"host","action":"start","key":"...","rounds":4,"roundSeconds":900,"topics":["Food"]}
 //	{"t":"host","action":"next"|"end","key":"..."}
 //	{"t":"host","action":"extend","key":"...","seconds":120}
@@ -27,6 +47,13 @@ type ClientMsg struct {
 	ZoneID string  `json:"zoneId"`
 	SeatID string  `json:"seatId"`
 	Body   string  `json:"body"`
+
+	// Status/RaisedHand ride the "input" message like ZoneID/SeatID — continuous
+	// state, broadcast on the next snapshot. Emote is its own message: a
+	// transient one-shot action, not continuous state (see the Emote consts).
+	Status     string `json:"status"`
+	RaisedHand bool   `json:"raisedHand"`
+	Emote      string `json:"emote"`
 
 	// Host console (language-exchange session control). Every host message
 	// carries the shared secret in Key; see internal/game/host.go.
@@ -58,15 +85,17 @@ type SessionState struct {
 
 // PlayerState is one avatar's authoritative state as fanned out to clients.
 type PlayerState struct {
-	ID     string  `json:"id"`
-	Name   string  `json:"name"`
-	X      float64 `json:"x"`
-	Z      float64 `json:"z"`
-	Yaw    float64 `json:"yaw"`
-	Anim   string  `json:"anim"`
-	Color  string  `json:"color"`
-	ZoneID string  `json:"zoneId,omitempty"`
-	SeatID string  `json:"seatId,omitempty"`
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	X          float64 `json:"x"`
+	Z          float64 `json:"z"`
+	Yaw        float64 `json:"yaw"`
+	Anim       string  `json:"anim"`
+	Color      string  `json:"color"`
+	ZoneID     string  `json:"zoneId,omitempty"`
+	SeatID     string  `json:"seatId,omitempty"`
+	Status     string  `json:"status,omitempty"`
+	RaisedHand bool    `json:"raisedHand,omitempty"`
 }
 
 // ServerMsg is anything the server sends to the browser.
@@ -75,6 +104,7 @@ type PlayerState struct {
 //	{"t":"snapshot","players":[...]}
 //	{"t":"leave","id":"ab12"}
 //	{"t":"chat","id":"ab12","name":"marcus","body":"hi!","ts":1234567890123}
+//	{"t":"emote","id":"ab12","emote":"wave","ts":1234567890123}
 //	{"t":"session","session":{...},"now":1234567890123}
 //	{"t":"hostResult","ok":true}  /  {"t":"hostResult","error":"wrong host key"}
 type ServerMsg struct {
@@ -86,6 +116,7 @@ type ServerMsg struct {
 	Name     string        `json:"name,omitempty"`
 	Body     string        `json:"body,omitempty"`
 	Ts       int64         `json:"ts,omitempty"`
+	Emote    string        `json:"emote,omitempty"`
 
 	Session *SessionState `json:"session,omitempty"`
 	// Now is the server's unix-ms clock when the message was built, so a client
