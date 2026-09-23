@@ -56,7 +56,7 @@ function paintIcon(scene: Scene, plane: Mesh, icon: string, texturePx: number, f
   texture.hasAlpha = true;
   const ctx = texture.getContext() as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, texturePx, texturePx);
-  ctx.font = `${fontPx}px serif`;
+  ctx.font = `${fontPx}px "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(icon, texturePx / 2, texturePx / 2 + fontPx * 0.05); // nudge for emoji glyph baseline
