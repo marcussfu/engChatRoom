@@ -16,6 +16,7 @@ import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environmen
 import { LocalPlayer } from "./localPlayer";
 import { RemotePlayers } from "./remotePlayers";
 import { rotationTarget } from "./rotation";
+import { TimerBoard } from "./timerBoard";
 
 const MOVE_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
@@ -87,7 +88,9 @@ export class Game {
   private readonly seatByMesh = new Map<string, SeatMarker>();
   private readonly seatById = new Map<string, SeatMarker>();
   private readonly tableCount: number;
+  private readonly timerBoard: TimerBoard;
   private session: SessionState | null = null;
+  private clockOffsetMs = 0;
 
   private activityUntil = 0;
   private lastSendAt = 0;
@@ -114,6 +117,7 @@ export class Game {
     this.rig = new CameraRig(this.scene, canvas);
     this.local = new LocalPlayer(this.scene, env.tables, "#c8c8c8", env.shadows);
     this.remotes = new RemotePlayers(this.scene, env.shadows);
+    this.timerBoard = new TimerBoard(this.scene);
     this.zones = env.zones;
     this.tableCount = env.tables.length;
     for (const seat of env.seats) {
@@ -179,7 +183,8 @@ export class Game {
         onSession: (m) => {
           const prev = this.session;
           this.session = m.session;
-          this.opts.onSession?.(m.session, m.now - Date.now());
+          this.clockOffsetMs = m.now - Date.now();
+          this.opts.onSession?.(m.session, this.clockOffsetMs);
           // Only a round *advancing within a running session* rotates people. A
           // state that merely arrives (we just joined, or reconnected to the same
           // round) must not shove anyone around.
@@ -255,6 +260,13 @@ export class Game {
     // Audio volume needs to track avatar movement even while the 3D scene
     // itself is between render-on-demand windows, so this runs unconditionally.
     this.media.updateProximity(this.local.x, this.local.z, this.remotes.positions());
+
+    this.timerBoard.update(this.session, this.clockOffsetMs, Date.now());
+    // A running round's countdown needs to keep visibly ticking even when
+    // nobody's moving and the camera is still — treat it like remote
+    // interpolation and keep the render-on-demand window open for as long as
+    // the round is live.
+    if (this.session?.active) this.bump();
 
     if (now < this.activityUntil || interp) {
       this.scene.render();
@@ -497,6 +509,7 @@ export class Game {
     this.media.disconnect();
     this.engine.stopRenderLoop();
     this.remotes.dispose();
+    this.timerBoard.dispose();
     this.scene.dispose();
     this.engine.dispose();
   }

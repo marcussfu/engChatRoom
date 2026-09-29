@@ -168,6 +168,25 @@
 >   下一步候選：navmesh 或牆上實體 TIMER 看板（使用者還沒選）；語言交換活動 + 狀態/emote
 >   合併驗收已完成。語音/視訊瀏覽器驗收清單仍等能測麥克風/鏡頭的環境。
 >   **收工檢查點（2026-09-23）**：`920efc7` 已 push，工作區乾淨。
+> - 2026-09-29：六天沒動工，使用者回來問下一步；navmesh 跟牆上 TIMER 看板兩個候選都先列了
+>   實作細節/風險（navmesh 需要新增 `recast-detour` WASM 依賴，且是這系列功能裡第一個真的
+>   需要瀏覽器來回驗證的——路徑卡住/繞路怪異這種問題光看程式碼抓不出來）。使用者選了**風險
+>   較低、不用新依賴的牆上 TIMER 看板**。做完（純前端，無 protocol 改動）：新檔
+>   `engine/timerBoard.ts`——貼在北牆內側的一塊平面，畫法跟狀態徽章同一套（`DynamicTexture`
+>   + unlit emissive plane），文字改用重用既有的 `rotation.ts` 的 `remainingMs`/`formatClock`
+>   純函式，跟 HUD 的 `SessionPanel` 算的是同一份倒數，只是多畫一份到 3D 場景裡。`paint()`
+>   內部用字串 key 比對只在文字真的變了才重繪 canvas，不是每幀都畫。`Game.frame()` 裡加了
+>   `if (this.session?.active) this.bump()`——render-on-demand 平常只在有人動/鏡頭轉/有人
+>   插值時才畫面，但倒數看板在活動進行中每幀都要重繪畫面本身才看得到數字在跳，所以比照
+>   remote 插值的做法，活動進行中持續保持「活動視窗」開著。全綠：`typecheck`/`lint`/
+>   `vitest(21，沒新增測試——canvas 畫法跟 remotePlayers.ts 的徽章一樣難用單元測試量化）`/
+>   `build`。**完全沒用瀏覽器實測**——看板位置/大小/字體排版好不好看、活動中畫面會不會因為
+>   持續 render 而變得比較耗電/發熱，都要實測才知道。
+>   **收工檢查點（2026-09-29）**：待 push。
+>   **下次接續**：(1) 請使用者瀏覽器測牆上 TIMER 看板（開一場語言交換活動，看北牆那塊看板
+>   倒數是否正常跳動、閒置時是否顯示歡迎字樣、活動結束是否顯示謝幕文字）；(2) 沒問題就選
+>   navmesh（下次要先確認 `RecastJSPlugin`/`recast-detour` 在目前 Babylon 8 + Vite 設定下能不能
+>   順利載入 WASM，這塊還沒驗證過）；(3) 語音/視訊瀏覽器驗收清單仍等能測麥克風/鏡頭的環境。
 
 ## Context（為什麼做這個）
 
@@ -625,9 +644,8 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 **尚未做 / 已知限制**
 1. ~~完全沒用瀏覽器實測前端~~ ← ✅ 使用者測過：`HOST_KEY` + 30 秒×3 輪 + 兩分頁各坐黑椅，
    換輪、橫幅、倒數、話題卡都正常。回饋見下方 2026-09-22 補充。
-2. **牆上的實體 TIMER 看板**沒做——目前只有 HUD 面板。要做的話用 Babylon `DynamicTexture`
-   把文字畫到牆面平面上（純 canvas 貼圖，沒有 iframe 問題），順便跟 render-on-demand 協調
-   （活動中每秒需要重繪一次）。
+2. ~~牆上的實體 TIMER 看板沒做~~ ← ✅ **2026-09-29 完成**：`engine/timerBoard.ts`，見下方
+   「Phase 2 現況（2026-09-29）」。
 3. ~~「提示 vs 自動走過去」目前固定是自動走~~ ← ✅ **2026-09-22 改掉**：使用者實測後回饋不該強制
    移動，已改成純提示（見同日補充）。PLAN §八.1 原文本來就是「到點**提示**換桌」，是先前實作
    時自己多做了「自動走」，這次改回符合原文。
@@ -684,6 +702,37 @@ README 同步更新用語。前端 typecheck/lint/vitest 全綠（`rotation.test
 2. 底部工具列（狀態/emote）跟左下角聊天框、右下角主持面板在窄螢幕（手機寬度）可能會擠在一起，
    沒有特別做防重疊，維持這個專案目前「先求功能對、外觀之後再調」的一貫做法。
 3. 狀態/emote 都只是圖示，不是真的動作動畫（見上）。
+
+#### Phase 2 現況（2026-09-29）—— 牆上實體 TIMER 看板
+
+使用者在 navmesh／牆上 TIMER 看板兩選一中選了風險較低、不用新依賴的後者。
+
+**已完成**
+- 新檔 `engine/timerBoard.ts`：`TimerBoard` class，建構時在北牆內側（`z = -ROOM_HALF_Z + 0.18`，
+  沒有另外匯出 `environment.ts` 的牆厚常數，取近似值貼牆）建一塊 4m×1.5m 的平面，材質跟
+  狀態徽章同一套配方（unlit + `backFaceCulling=false` + `DynamicTexture` 當 emissive
+  texture）。`update(session, clockOffsetMs, nowMs)` 沒有活動時畫「英語口說練習咖啡廳」歡迎字樣
+  （活動剛結束時改顯示「活動已結束，謝謝參加！」），活動中畫「第 N/M 輪」＋大字倒數＋話題，
+  倒數/格式化直接重用 `rotation.ts` 既有的 `remainingMs`/`formatClock`（跟 HUD 的
+  `SessionPanel` 算的是同一份時間，只是多畫一份到 3D 場景）。`paint()` 用組合字串當 key，
+  文字沒變就不重繪 canvas，避免每幀都畫。
+- `Game.ts`：建構子建立 `TimerBoard` 實例；`frame()` 迴圈每幀呼叫 `timerBoard.update(...)`
+  （便宜，通常直接被 key 比對擋掉）；新增 `if (this.session?.active) this.bump()`——
+  render-on-demand 平常只在移動/鏡頭/插值時才真的呼叫 `scene.render()`，但看板倒數要「肉眼
+  看到數字在跳」就必須讓畫面真的持續重繪，所以活動進行中比照 remote 插值的做法，讓
+  render-on-demand 的活動視窗一直開著（活動結束就恢復正常閒置省電）。
+  `dispose()` 收尾清 `timerBoard.dispose()`。
+- 沒有 protocol 改動——這純粹是把伺服器已經在送的 `SessionState` 多畫一份到 3D 場景，跟
+  HUD 的 `SessionPanel` 是同一份資料兩個畫法。
+- 全綠：web `typecheck`/`lint`/`vitest(21，沒新增測試)`/`build`。沒新增單元測試——canvas 畫法
+  這塊本來就難用測試量化文字排版對不對，跟 `remotePlayers.ts` 的徽章當初一樣的判斷。
+
+**已知限制**
+1. **完全沒用瀏覽器實測**——看板位置/大小/字體排版好不好看、活動進行中因為持續 render
+   會不會比較耗電/CPU 熱，都要實測才知道。
+2. 看板固定貼在北牆，房間放大過（22×16→28×20）之後牆面很寬，這塊板子只佔中間一小段，
+   視覺上可能偏小；等實測回饋再調 `BOARD_WIDTH`/`BOARD_HEIGHT`。
+3. 沒有像真的螢幕一樣的邊框/支架 mesh，就是一塊貼牆的平面，跟房間其他家具一樣是佔位品質。
 
 ### Phase 3 — 擴增 + 進階 AI + 打磨
 - Interest management（grid / octree，只送附近實體）；Redis/NATS pub/sub、多實例、依 room sharding。
