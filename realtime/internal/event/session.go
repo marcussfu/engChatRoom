@@ -32,6 +32,10 @@ const (
 	maxTopics     = 50
 	maxTopicRunes = 100
 
+	// boardTopics is how many of the host's topics the wall TOPIC 1/2/3 boards
+	// show — a fixed display, not the per-round rotation (see SessionState.Topics).
+	boardTopics = 3
+
 	// finishedLinger is how long the "finished" state stays visible (to late
 	// joiners too) before the session flips back to idle.
 	finishedLinger = 30 * time.Second
@@ -82,7 +86,8 @@ type Session struct {
 	round      int // 1-based while running/finished
 	roundDur   time.Duration
 	roundEnd   time.Time
-	topics     []string // exactly `rounds` long once started
+	topics     []string // exactly `rounds` long once started (cycled from baseTopics)
+	baseTopics []string // the host's own list, pre-cycling — see SessionState.Topics
 	finishedAt time.Time
 }
 
@@ -116,6 +121,7 @@ func (s *Session) Start(cfg Config, now time.Time) error {
 	s.roundDur = time.Duration(cfg.RoundSeconds) * time.Second
 	s.roundEnd = now.Add(s.roundDur)
 	s.topics = topics
+	s.baseTopics = base
 	return nil
 }
 
@@ -213,6 +219,7 @@ func (s *Session) resetLocked() {
 	s.roundDur = 0
 	s.roundEnd = time.Time{}
 	s.topics = nil
+	s.baseTopics = nil
 	s.finishedAt = time.Time{}
 }
 
@@ -226,6 +233,7 @@ func (s *Session) snapshotLocked() protocol.SessionState {
 			RoundEndsAt: s.roundEnd.UnixMilli(),
 			RoundMs:     s.roundDur.Milliseconds(),
 			Topic:       s.topics[s.round-1],
+			Topics:      firstN(s.baseTopics, boardTopics),
 		}
 	case phaseFinished:
 		return protocol.SessionState{
@@ -233,10 +241,19 @@ func (s *Session) snapshotLocked() protocol.SessionState {
 			Round:    s.round,
 			Rounds:   s.rounds,
 			RoundMs:  s.roundDur.Milliseconds(),
+			Topics:   firstN(s.baseTopics, boardTopics),
 		}
 	default:
 		return protocol.SessionState{}
 	}
+}
+
+// firstN returns at most the first n elements of s (all of it if shorter).
+func firstN(s []string, n int) []string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 // cleanTopics trims, drops blanks, clamps length, and caps how many are kept.

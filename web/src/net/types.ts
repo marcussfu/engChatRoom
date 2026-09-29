@@ -62,6 +62,10 @@ export interface SessionState {
   /** Nominal round length; a host extension moves roundEndsAt but not this. */
   roundMs: number;
   topic: string;
+  /** The host's own topic list (pre-cycling), capped to a handful — for a
+   * *fixed* "today's topics" display (the wall TOPIC 1/2/3 boards), separate
+   * from `topic`'s per-round rotation which drives the HUD instead. */
+  topics?: string[];
 }
 
 export interface SessionMsg {

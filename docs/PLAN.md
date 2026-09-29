@@ -182,11 +182,22 @@
 >   `vitest(21，沒新增測試——canvas 畫法跟 remotePlayers.ts 的徽章一樣難用單元測試量化）`/
 >   `build`。**完全沒用瀏覽器實測**——看板位置/大小/字體排版好不好看、活動中畫面會不會因為
 >   持續 render 而變得比較耗電/發熱，都要實測才知道。
+>   **同日續，第一次瀏覽器實測回報 bug**：看板文字左右鏡像＋上下顛倒（`CreatePlane` 預設
+>   「貼圖正常那面」法線朝 -Z，剛好背對房間）。修法：`plane.rotation.y = Math.PI`（`72241d7`），
+>   使用者確認修好。
+>   **同日續，設計回饋**：使用者接著澄清三點需求——(1) 計時器板不該同時秀話題，停止時只顯示
+>   `00:00`；(2) TOPIC 應該有三個、各別一塊黑板；(3) 排列順序黑板1(TOPIC1)/2(TOPIC2)/3(TOPIC3)/
+>   4(計時器)。問清楚「三個 TOPIC 內容怎麼決定」後，使用者選**固定顯示主持人設定的前三個話題**
+>   （不隨輪次動態換，比較簡單）。整個重做成 `engine/sessionBoards.ts`（`timerBoard.ts` 改名），
+>   四塊板各司其職，細節見下方「Phase 2 現況（2026-09-29）」——**這次需要 protocol 加欄位**
+>   （`SessionState.Topics []string`，跟原本跟著輪次轉的 `Topic` 分開，互不影響）。全綠：web
+>   四項 + realtime `gofmt`/`vet`/`build`/`test`。
 >   **收工檢查點（2026-09-29）**：待 push。
->   **下次接續**：(1) 請使用者瀏覽器測牆上 TIMER 看板（開一場語言交換活動，看北牆那塊看板
->   倒數是否正常跳動、閒置時是否顯示歡迎字樣、活動結束是否顯示謝幕文字）；(2) 沒問題就選
->   navmesh（下次要先確認 `RecastJSPlugin`/`recast-detour` 在目前 Babylon 8 + Vite 設定下能不能
->   順利載入 WASM，這塊還沒驗證過）；(3) 語音/視訊瀏覽器驗收清單仍等能測麥克風/鏡頭的環境。
+>   **下次接續**：(1) 請使用者瀏覽器測第二版四塊看板（開一場語言交換活動，設 3 個以上話題，看
+>   黑板 1/2/3 是否正確顯示前三個話題、板 4 是否只有時鐘沒有其他文字、停止/結束時是否顯示
+>   `00:00`、四塊板間距/大小/換行排版好不好看）；(2) 沒問題就選 navmesh（下次要先確認
+>   `RecastJSPlugin`/`recast-detour` 在目前 Babylon 8 + Vite 設定下能不能順利載入 WASM，這塊
+>   還沒驗證過）；(3) 語音/視訊瀏覽器驗收清單仍等能測麥克風/鏡頭的環境。
 
 ## Context（為什麼做這個）
 
@@ -705,34 +716,53 @@ README 同步更新用語。前端 typecheck/lint/vitest 全綠（`rotation.test
 
 #### Phase 2 現況（2026-09-29）—— 牆上實體 TIMER 看板
 
-使用者在 navmesh／牆上 TIMER 看板兩選一中選了風險較低、不用新依賴的後者。
+使用者在 navmesh／牆上 TIMER 看板兩選一中選了風險較低、不用新依賴的後者。第一版（單一看板同時
+畫輪數+倒數+話題）做完後有兩輪使用者實測回饋，記錄如下。
 
-**已完成**
-- 新檔 `engine/timerBoard.ts`：`TimerBoard` class，建構時在北牆內側（`z = -ROOM_HALF_Z + 0.18`，
-  沒有另外匯出 `environment.ts` 的牆厚常數，取近似值貼牆）建一塊 4m×1.5m 的平面，材質跟
-  狀態徽章同一套配方（unlit + `backFaceCulling=false` + `DynamicTexture` 當 emissive
-  texture）。`update(session, clockOffsetMs, nowMs)` 沒有活動時畫「英語口說練習咖啡廳」歡迎字樣
-  （活動剛結束時改顯示「活動已結束，謝謝參加！」），活動中畫「第 N/M 輪」＋大字倒數＋話題，
-  倒數/格式化直接重用 `rotation.ts` 既有的 `remainingMs`/`formatClock`（跟 HUD 的
-  `SessionPanel` 算的是同一份時間，只是多畫一份到 3D 場景）。`paint()` 用組合字串當 key，
-  文字沒變就不重繪 canvas，避免每幀都畫。
-- `Game.ts`：建構子建立 `TimerBoard` 實例；`frame()` 迴圈每幀呼叫 `timerBoard.update(...)`
-  （便宜，通常直接被 key 比對擋掉）；新增 `if (this.session?.active) this.bump()`——
-  render-on-demand 平常只在移動/鏡頭/插值時才真的呼叫 `scene.render()`，但看板倒數要「肉眼
-  看到數字在跳」就必須讓畫面真的持續重繪，所以活動進行中比照 remote 插值的做法，讓
-  render-on-demand 的活動視窗一直開著（活動結束就恢復正常閒置省電）。
-  `dispose()` 收尾清 `timerBoard.dispose()`。
-- 沒有 protocol 改動——這純粹是把伺服器已經在送的 `SessionState` 多畫一份到 3D 場景，跟
-  HUD 的 `SessionPanel` 是同一份資料兩個畫法。
-- 全綠：web `typecheck`/`lint`/`vitest(21，沒新增測試)`/`build`。沒新增單元測試——canvas 畫法
-  這塊本來就難用測試量化文字排版對不對，跟 `remotePlayers.ts` 的徽章當初一樣的判斷。
+**第一版 bug（瀏覽器實測抓到）**：看板文字左右鏡像＋上下顛倒。原因是 Babylon `CreatePlane`
+預設「貼圖方向正常的那一面」法線朝 -Z，剛好背對房間、朝向牆壁，玩家在房間內看到的其實是背面
+（鏡像）。修法：`plane.rotation.y = Math.PI` 把正常那面轉向房間。
+
+**第一版設計回饋（使用者澄清需求）**：
+1. 「計時器應該就是計時器，不要還同時呈現題目，停止狀態只要呈現 00:00」——原本一塊板子塞
+   輪數+倒數+話題三種資訊，使用者要求拆開。
+2. 「TOPIC 應該有三個，各別可以呈現在不同的黑板上」——原設計只顯示「這一輪」的話題，使用者要的
+   是主持人設定的**前三個話題固定展示**（像教室掛三塊話題黑板，不隨輪次變動；這其實比較貼近
+   PLAN §一.A 原始截圖盤點就寫的「TOPIC 1/2/3」場景資產，只是先前實作時做成了跟著輪次轉的
+   單一話題）。
+3. 排列順序：黑板1(TOPIC1)、黑板2(TOPIC2)、黑板3(TOPIC3)、黑板4(計時器)，由左到右。
+
+**第二版已完成**（取代第一版，`engine/timerBoard.ts` 整個改名重寫成 `engine/sessionBoards.ts`）：
+- **Protocol 新增欄位**：`SessionState.Topics []string`（Go）/`topics?: string[]`（TS），送
+  「主持人設定的前 3 個話題（未展開輪次循環前的原始清單）」，跟原本 `Topic`（這一輪的話題，
+  隨輪次轉）是兩個獨立欄位、各自服務不同的畫面（`Topics`→牆上黑板固定展示，`Topic`→HUD
+  `SessionPanel` 跟著輪次跳）。`event.Session` 新增 `baseTopics` 欄位存「展開成 `rounds` 長度
+  前」的原始清單（`Start()` 時跟 `topics` 一起存），`snapshotLocked()` 用新的 `firstN()` helper
+  取前 3 個放進 `Topics`；`resetLocked()` 一併清空。沒有動到既有的 `topics`/`Topic` 輪轉邏輯，
+  純加欄位，舊測試不用改。
+- **前端 `sessionBoards.ts`**：`SessionBoards` class 一次管理 4 塊板子，沿北牆等距排開
+  （x = -10.5/-3.5/3.5/10.5，間距 7m，順序符合需求的 1/2/3/計時器）：
+  - `TopicBoard`（×3）：固定畫「TOPIC {n}」標題 + 該話題文字（`session.topics?.[i]`），文字太長
+    用簡單貪婪演算法自動換行（最多 3 行）；沒設定話題時顯示「（尚未設定）」佔位，不隨輪次改變。
+  - `ClockBoard`（×1）：**只畫大字時鐘**，沒有輪數、沒有話題；`session?.active` 為 false（閒置、
+    輪次間、活動已結束）一律顯示 `00:00`。
+  - 兩者共用 `makeBoardPlane`/`paintBoard` helper（跟徽章同配方：unlit + `backFaceCulling=false`
+    + `DynamicTexture` emissive），也都繼承第一版修好的 `rotation.y = Math.PI` 鏡像修正。貼圖
+    尺寸依各自平面的寬高比精算過（TOPIC 3.2:1.5、TIMER 2.4:1.5），避免文字被拉伸變形。
+  - `Game.ts` 只是把 `TimerBoard` 換成 `SessionBoards`，呼叫方式不變（`update(session,
+    clockOffsetMs, nowMs)` 每幀呼叫，`session.active` 時繼續靠 `bump()` 撐著 render-on-demand
+    視窗讓時鐘看得到在跳）。
+- 全綠：web `typecheck`/`lint`/`vitest(21，沒新增測試)`/`build`；realtime `gofmt`/`vet`/`build`/
+  `test`（沿用既有測試，沒有針對新欄位加測試——`Topics` 只是把已經在算的 `baseTopics` 多存一份
+  進回傳的 struct，邏輯風險低於畫布排版本身）。
 
 **已知限制**
-1. **完全沒用瀏覽器實測**——看板位置/大小/字體排版好不好看、活動進行中因為持續 render
-   會不會比較耗電/CPU 熱，都要實測才知道。
-2. 看板固定貼在北牆，房間放大過（22×16→28×20）之後牆面很寬，這塊板子只佔中間一小段，
-   視覺上可能偏小；等實測回饋再調 `BOARD_WIDTH`/`BOARD_HEIGHT`。
-3. 沒有像真的螢幕一樣的邊框/支架 mesh，就是一塊貼牆的平面，跟房間其他家具一樣是佔位品質。
+1. **第二版完全沒用瀏覽器實測**——四塊板子的間距/大小、換行演算法排版好不好看，都要實測才知道。
+2. 三個話題板固定顯示「主持人設定的前三個」，如果主持人設定的話題超過 3 個，第 4 個以後的話題
+   永遠不會出現在牆上（只會在 HUD 的 `SessionPanel` 跟著輪次出現）——這是使用者選的方案
+   （相對「跟著輪次動態換」更簡單），之後如果覺得不夠用再改。
+3. 沒有像真的螢幕/黑板一樣的邊框、粉筆架 mesh，就是四塊貼牆的平面，跟房間其他家具一樣是
+   佔位品質。
 
 ### Phase 3 — 擴增 + 進階 AI + 打磨
 - Interest management（grid / octree，只送附近實體）；Redis/NATS pub/sub、多實例、依 room sharding。

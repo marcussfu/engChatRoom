@@ -81,6 +81,10 @@ type SessionState struct {
 	RoundEndsAt int64  `json:"roundEndsAt"`
 	RoundMs     int64  `json:"roundMs"`
 	Topic       string `json:"topic"`
+	// Topics is the host's own topic list (pre-cycling), capped to a handful —
+	// for a *fixed* "today's topics" display (the wall TOPIC 1/2/3 boards),
+	// separate from Topic's per-round rotation which drives the HUD instead.
+	Topics []string `json:"topics,omitempty"`
 }
 
 // PlayerState is one avatar's authoritative state as fanned out to clients.
