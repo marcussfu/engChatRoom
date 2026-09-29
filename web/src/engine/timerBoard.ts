@@ -26,6 +26,10 @@ export class TimerBoard {
     // thick) — close enough to read as "mounted on the wall" without needing
     // environment.ts to export its wall thickness constant.
     this.plane.position.set(0, BOARD_Y, -ROOM_HALF_Z + 0.18);
+    // CreatePlane's texture-correct face has normal -Z by default — that faces
+    // *into* the wall here, so the room (at larger Z) was seeing the mirrored
+    // back face. Flip 180° so the readable face points into the room.
+    this.plane.rotation.y = Math.PI;
     this.plane.isPickable = false;
 
     const mat = new StandardMaterial("timerBoardMat", scene);
