@@ -192,10 +192,19 @@
 >   四塊板各司其職，細節見下方「Phase 2 現況（2026-09-29）」——**這次需要 protocol 加欄位**
 >   （`SessionState.Topics []string`，跟原本跟著輪次轉的 `Topic` 分開，互不影響）。全綠：web
 >   四項 + realtime `gofmt`/`vet`/`build`/`test`。
->   **收工檢查點（2026-09-29）**：待 push。
->   **下次接續**：(1) 請使用者瀏覽器測第二版四塊看板（開一場語言交換活動，設 3 個以上話題，看
->   黑板 1/2/3 是否正確顯示前三個話題、板 4 是否只有時鐘沒有其他文字、停止/結束時是否顯示
->   `00:00`、四塊板間距/大小/換行排版好不好看）；(2) 沒問題就選 navmesh（下次要先確認
+>   **收工檢查點（2026-09-29）**：`e72b441` 已 push。
+> - 2026-09-30：使用者瀏覽器實測第二版，回報三點修改需求——(1) 黑板應改成縮圖，點擊彈出燈箱
+>   顯示文章+4~5個問題；(2) 四塊板換到窄邊牆；(3) 內容來源問清楚後選**預設題庫（我寫）+ 主持人
+>   也能自己補充（混合）**。整個做成第三版：Go 側 `SessionState.Topics` 從 `[]string` 改成
+>   `[]protocol.TopicCard{Title,Article,Questions}`，`event.DefaultTopics` 從純字串改寫成 10 張
+>   完整卡片（authored 的文章+4問），host 輸入維持單行 textarea 但支援三種寫法（比對預設庫／
+>   純自訂標題／`|` 分隔的完整自訂內容）；前端縮圖+燈箱+窄邊牆（`wallW`），細節見下方
+>   「Phase 2 現況（2026-09-30）」。全綠：web 四項 + realtime `gofmt`/`vet`/`build`/`test`
+>   （含 3 個新的 `parseTopicLine` 測試）。**完全沒用瀏覽器實測**。
+>   **收工檢查點（2026-09-30）**：待 push。
+>   **下次接續**：(1) 請使用者瀏覽器測第三版（縮圖排版、點擊燈箱是否正常開關、燈箱內容是否
+>   正確——含預設題庫比對命中/沒命中兩種情況、`|` 自訂內容格式、窄邊牆四塊板位置/大小、跟
+>   走路/坐椅子的 pointer pick 有沒有互相干擾）；(2) 沒問題就選 navmesh（下次要先確認
 >   `RecastJSPlugin`/`recast-detour` 在目前 Babylon 8 + Vite 設定下能不能順利載入 WASM，這塊
 >   還沒驗證過）；(3) 語音/視訊瀏覽器驗收清單仍等能測麥克風/鏡頭的環境。
 
@@ -763,6 +772,59 @@ README 同步更新用語。前端 typecheck/lint/vitest 全綠（`rotation.test
    （相對「跟著輪次動態換」更簡單），之後如果覺得不夠用再改。
 3. 沒有像真的螢幕/黑板一樣的邊框、粉筆架 mesh，就是四塊貼牆的平面，跟房間其他家具一樣是
    佔位品質。
+
+#### Phase 2 現況（2026-09-30）—— 第三版：縮圖 + 燈箱 + 窄邊牆
+
+使用者測過第二版後又回饋三點：(1) 黑板應該是「縮圖」，點擊才彈出放大燈箱顯示文章+4~5個問題；
+(2) 四塊板子想換到房間窄邊的牆；(3)（間接問題）縮圖/燈箱的「文章」「問題」內容從哪來——問清楚後
+使用者選**混合**：預設題庫我先寫好完整內容，主持人也能自己補充。
+
+**已完成**：
+- **內容模型（Go）**：新增 `protocol.TopicCard{ Title, Article, Questions []string }` 取代原本
+  `SessionState.Topics []string`（`Topic` 欄位不變，仍是這一輪的短句，現在等於
+  `card.Title`）。`event.DefaultTopics` 從 10 個純字串改寫成 10 張完整卡片（我authored的英文
+  文章 + 每張 4 個追問），同時身兼「預設題庫」角色。
+- **混合輸入（Go, `event.parseTopicLine`）**：主持人開活動的話題欄位維持原本「一行一個」的
+  textarea（沒有改成複雜表單）——每一行：
+  - 純文字且**大小寫不分完全比對到預設題庫的 Title** → 直接套用該預設的文章+問題。
+  - 純文字但沒比對到 → 當純自訂標題，文章/問題留空（燈箱只顯示標題）。
+  - 含 `|`（半形直線）→ 當作主持人自己塞的完整內容：`標題 | 文章 | 問題 | 問題…`
+    （最多留 5 個問題）。這個 escape hatch 讓「主持人也能自己補充」成立，不用大改 UI。
+  - `cleanTopics` 的單行長度上限從 100 提高到 `maxTopicLineRunes=800`（要放得下一整行
+    標題+文章+5個問題），拆開後才對 Title/Article/每個 Question 分別套 100/400/150 runes 的
+    上限——`TestCleanTopics` 因為常數改名跟著更新，另外新增 3 個測試涵蓋
+    `parseTopicLine` 的三種情況（比對預設／純自訂／`|` 富內容）。
+  - `firstN` 改寫成泛型（`func firstN[T any](s []T, n int) []T`），因為現在要切的是
+    `[]protocol.TopicCard` 不是 `[]string`。
+- **前端縮圖（`sessionBoards.ts`）**：`TopicBoard` 不再畫完整話題文字，改畫「TOPIC {n}」標題 +
+  換行後的短標題 + 「🔍 點擊查看」提示；平面設 `isPickable = true` 並給固定名字
+  `topicBoard0/1/2`，`SessionBoards.topicIndexForMesh(name)` 讓 `Game.ts` 能把 pointer pick
+  的結果映射回是第幾塊板子。`ClockBoard` 維持不變（純時鐘、`isPickable` 保持 false，沒有點擊
+  意義）。
+- **窄邊牆**：四塊板子從北牆（長邊，28m）搬到**西牆**（`wallW`，窄邊，20m）；沿 Z 軸等距排列
+  （間距 4.5m），平面旋轉從 `rotation.y = Math.PI` 改成 `-Math.PI / 2`（west 牆法線朝 +X，跟
+  north 牆朝 +Z 需要的旋轉角度不同——因為西牆在推導上跟北牆一樣是「牆在座標軸負向端、房間在
+  正向端」，用同一套換算邏輯反推出來，細節見 `sessionBoards.ts` 頂部註解）。
+- **點擊互動（`Game.ts`）**：`onPointer` 的 `POINTERPICK` 分支新增話題板命中判斷，判斷順序放在
+  seat/floor 判斷**之前**（命中就直接 `return`，不會再誤判成點地板/點椅子）；新增
+  `GameOptions.onTopicBoardClick?: (card) => void`。
+- **燈箱 UI**：新檔 `ui/TopicLightbox.tsx`——深色遮罩 + 置中卡片，顯示標題/文章/問題清單（點擊
+  遮罩或 Esc 關閉，點卡片本身不關閉）；沒有文章/問題時顯示「主持人還沒有為這個話題提供更多
+  內容」。`App.tsx` 接上 `topicCard` state + `onTopicBoardClick`。`HostConsole.tsx` 的話題欄位
+  說明文字更新，提示三種輸入方式。
+- 全綠：web `typecheck`/`lint`/`vitest(21，沒新增測試——lightbox 是純展示元件，跟其他 UI
+  overlay 一樣沒有寫測試的先例)`/`build`；realtime `gofmt`/`vet`/`build`/`test`（含 3 個新增的
+  `parseTopicLine` 測試）。
+
+**已知限制**
+1. **完全沒用瀏覽器實測**——縮圖排版、點擊判定準不準（尤其是跟椅子/地板的 pointer pick
+   有沒有互相干擾）、燈箱在窄螢幕上好不好用，都要實測才知道。
+2. 預設題庫只有 10 張卡片，比對方式是**完全比對**（大小寫不分）——host 打的話題只要跟預設的
+   英文句子有一個字不一樣（少個標點、多個空格之類）就會比對失敗、退化成純標題無文章。之後如果
+   常常誤判，可以考慮改成模糊比對或下拉選單選預設題目。
+3. `|` 富內容語法沒有輸入驗證/預覽——host 打錯分隔符號的位置（例如忘記留問題)不會有任何錯誤
+   提示，就是安靜地少一截內容，只能等燈箱打開才發現。
+4. 縮圖跟燈箱都還是純文字排版，沒有插圖/圖示（跟房間其他家具一樣的佔位品質）。
 
 ### Phase 3 — 擴增 + 進階 AI + 打磨
 - Interest management（grid / octree，只送附近實體）；Redis/NATS pub/sub、多實例、依 room sharding。

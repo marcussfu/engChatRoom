@@ -65,7 +65,16 @@ export interface SessionState {
   /** The host's own topic list (pre-cycling), capped to a handful — for a
    * *fixed* "today's topics" display (the wall TOPIC 1/2/3 boards), separate
    * from `topic`'s per-round rotation which drives the HUD instead. */
-  topics?: string[];
+  topics?: TopicCard[];
+}
+
+/** One topic's full content — mirrors protocol.TopicCard. `article`/
+ * `questions` are empty for a bare custom topic the host typed without the
+ * "|"-delimited rich-content syntax; the lightbox just shows the title then. */
+export interface TopicCard {
+  title: string;
+  article?: string;
+  questions?: string[];
 }
 
 export interface SessionMsg {

@@ -29,8 +29,15 @@ const (
 	MaxRoundSeconds  = 3600
 	MaxExtendSeconds = 3600
 
-	maxTopics     = 50
-	maxTopicRunes = 100
+	maxTopics = 50
+	// maxTopicLineRunes caps a raw host-typed line (before "|"-delimited rich
+	// content is split apart) — generous, since a rich line packs a title,
+	// an article, and several questions onto one line (see parseTopicLine).
+	maxTopicLineRunes = 800
+	maxTitleRunes     = 100
+	maxArticleRunes   = 400
+	maxQuestionRunes  = 150
+	maxQuestions      = 5
 
 	// boardTopics is how many of the host's topics the wall TOPIC 1/2/3 boards
 	// show — a fixed display, not the per-round rotation (see SessionState.Topics).
@@ -46,19 +53,112 @@ var (
 	ErrNotRunning = errors.New("no session is running")
 )
 
-// DefaultTopics are used when the host doesn't supply any. Deliberately
-// open-ended, everyday prompts that suit a beginner-to-intermediate speaker.
-var DefaultTopics = []string{
-	"What's your favorite food, and why?",
-	"Describe your perfect weekend.",
-	"Tell me about your hometown.",
-	"What do you do for work or study?",
-	"What's the best trip you've ever taken?",
-	"What hobbies are you into right now?",
-	"Talk about a movie or show you love.",
-	"What was the best gift you've ever received?",
-	"How do you usually spend your mornings?",
-	"What are you looking forward to this year?",
+// DefaultTopics are used when the host doesn't supply any, and also double as
+// the preset library that a plain host-typed line can match by title (see
+// parseTopicLine) — deliberately open-ended, everyday prompts with a short
+// article and a few follow-up questions, suiting a beginner-to-intermediate
+// speaker.
+var DefaultTopics = []protocol.TopicCard{
+	{
+		Title:   "What's your favorite food, and why?",
+		Article: "Food is one of the easiest ways to start a conversation — everyone has an opinion about it! Talk about a dish you love, a comfort food from home, or something new you tried recently.",
+		Questions: []string{
+			"What's one dish from your country everyone should try?",
+			"Do you prefer cooking at home or eating out?",
+			"What's the most unusual food you've ever tried?",
+			"Is there a food you disliked as a kid but enjoy now?",
+		},
+	},
+	{
+		Title:   "Describe your perfect weekend.",
+		Article: "Weekends look different for everyone — some people relax at home, others go out and explore. Share what a truly perfect weekend looks like for you.",
+		Questions: []string{
+			"Do you prefer a quiet weekend or a busy one?",
+			"What's something you always do on weekends?",
+			"Who do you usually spend your weekends with?",
+			"What was your best weekend recently?",
+		},
+	},
+	{
+		Title:   "Tell me about your hometown.",
+		Article: "Everyone comes from somewhere different, with its own food, weather, and way of life. Describe the place where you grew up.",
+		Questions: []string{
+			"What's the best thing about your hometown?",
+			"How is it different from where you live now?",
+			"What do visitors usually say about it?",
+			"Would you ever move back there?",
+		},
+	},
+	{
+		Title:   "What do you do for work or study?",
+		Article: "Work and school take up a big part of our lives. Talk about what you do, and what a typical day looks like for you.",
+		Questions: []string{
+			"What do you enjoy most about it?",
+			"What's the most challenging part?",
+			"What did you want to be when you were a kid?",
+			"Where do you see yourself in five years?",
+		},
+	},
+	{
+		Title:   "What's the best trip you've ever taken?",
+		Article: "Traveling — even a short trip nearby — often creates the stories we remember for years. Share a trip that stands out to you.",
+		Questions: []string{
+			"What made that trip so memorable?",
+			"Did anything go wrong during the trip?",
+			"Would you go back to that place?",
+			"Where do you want to travel next?",
+		},
+	},
+	{
+		Title:   "What hobbies are you into right now?",
+		Article: "Hobbies are a great window into what someone truly enjoys. Talk about how you like to spend your free time these days.",
+		Questions: []string{
+			"How did you get into that hobby?",
+			"How much time do you spend on it each week?",
+			"Is there a hobby you'd like to try but haven't yet?",
+			"Do you know anyone else who shares this hobby?",
+		},
+	},
+	{
+		Title:   "Talk about a movie or show you love.",
+		Article: "Movies and shows give us a lot to talk about — characters, stories, and surprising endings. Share one that really stuck with you.",
+		Questions: []string{
+			"What's it about, in a few sentences?",
+			"Who's your favorite character, and why?",
+			"Would you recommend it to a friend?",
+			"What's a movie or show you didn't like, and why?",
+		},
+	},
+	{
+		Title:   "What was the best gift you've ever received?",
+		Article: "A great gift often says a lot about the person who gave it. Share a gift that really meant something to you.",
+		Questions: []string{
+			"Who gave it to you?",
+			"What made it so special?",
+			"What's the best gift you've ever given someone else?",
+			"Do you prefer giving or receiving gifts?",
+		},
+	},
+	{
+		Title:   "How do you usually spend your mornings?",
+		Article: "Mornings can set the tone for the whole day. Describe your typical morning routine, from waking up to starting your day.",
+		Questions: []string{
+			"Are you a morning person or a night person?",
+			"What's the first thing you do after waking up?",
+			"Has your morning routine changed over the years?",
+			"What would your ideal morning look like?",
+		},
+	},
+	{
+		Title:   "What are you looking forward to this year?",
+		Article: "It's always good to have something to look forward to, whether it's big or small. Share a plan, goal, or event you're excited about.",
+		Questions: []string{
+			"Why does it matter to you?",
+			"What are you doing to prepare for it?",
+			"Is there anything you're a little nervous about?",
+			"What did you look forward to last year?",
+		},
+	},
 }
 
 type phase int
@@ -86,8 +186,8 @@ type Session struct {
 	round      int // 1-based while running/finished
 	roundDur   time.Duration
 	roundEnd   time.Time
-	topics     []string // exactly `rounds` long once started (cycled from baseTopics)
-	baseTopics []string // the host's own list, pre-cycling — see SessionState.Topics
+	topics     []protocol.TopicCard // exactly `rounds` long once started (cycled from baseCards)
+	baseCards  []protocol.TopicCard // the host's own list, pre-cycling — see SessionState.Topics
 	finishedAt time.Time
 }
 
@@ -101,13 +201,19 @@ func (s *Session) Start(cfg Config, now time.Time) error {
 		return fmt.Errorf("round length must be between %d and %d seconds", MinRoundSeconds, MaxRoundSeconds)
 	}
 
-	base := cleanTopics(cfg.Topics)
-	if len(base) == 0 {
-		base = DefaultTopics
+	lines := cleanTopics(cfg.Topics)
+	var cards []protocol.TopicCard
+	if len(lines) == 0 {
+		cards = DefaultTopics
+	} else {
+		cards = make([]protocol.TopicCard, len(lines))
+		for i, line := range lines {
+			cards[i] = parseTopicLine(line)
+		}
 	}
-	topics := make([]string, cfg.Rounds)
+	topics := make([]protocol.TopicCard, cfg.Rounds)
 	for i := range topics {
-		topics[i] = base[i%len(base)]
+		topics[i] = cards[i%len(cards)]
 	}
 
 	s.mu.Lock()
@@ -121,7 +227,7 @@ func (s *Session) Start(cfg Config, now time.Time) error {
 	s.roundDur = time.Duration(cfg.RoundSeconds) * time.Second
 	s.roundEnd = now.Add(s.roundDur)
 	s.topics = topics
-	s.baseTopics = base
+	s.baseCards = cards
 	return nil
 }
 
@@ -219,7 +325,7 @@ func (s *Session) resetLocked() {
 	s.roundDur = 0
 	s.roundEnd = time.Time{}
 	s.topics = nil
-	s.baseTopics = nil
+	s.baseCards = nil
 	s.finishedAt = time.Time{}
 }
 
@@ -232,8 +338,8 @@ func (s *Session) snapshotLocked() protocol.SessionState {
 			Rounds:      s.rounds,
 			RoundEndsAt: s.roundEnd.UnixMilli(),
 			RoundMs:     s.roundDur.Milliseconds(),
-			Topic:       s.topics[s.round-1],
-			Topics:      firstN(s.baseTopics, boardTopics),
+			Topic:       s.topics[s.round-1].Title,
+			Topics:      firstN(s.baseCards, boardTopics),
 		}
 	case phaseFinished:
 		return protocol.SessionState{
@@ -241,7 +347,7 @@ func (s *Session) snapshotLocked() protocol.SessionState {
 			Round:    s.round,
 			Rounds:   s.rounds,
 			RoundMs:  s.roundDur.Milliseconds(),
-			Topics:   firstN(s.baseTopics, boardTopics),
+			Topics:   firstN(s.baseCards, boardTopics),
 		}
 	default:
 		return protocol.SessionState{}
@@ -249,14 +355,18 @@ func (s *Session) snapshotLocked() protocol.SessionState {
 }
 
 // firstN returns at most the first n elements of s (all of it if shorter).
-func firstN(s []string, n int) []string {
+func firstN[T any](s []T, n int) []T {
 	if len(s) <= n {
 		return s
 	}
 	return s[:n]
 }
 
-// cleanTopics trims, drops blanks, clamps length, and caps how many are kept.
+// cleanTopics trims, drops blanks, clamps length, and caps how many raw lines
+// are kept — this runs *before* parseTopicLine splits a "|"-delimited line
+// into its title/article/questions, so the length cap here is generous
+// (maxTopicLineRunes), not the tighter per-field caps parseTopicLine applies
+// afterward.
 func cleanTopics(in []string) []string {
 	out := make([]string, 0, len(in))
 	for _, t := range in {
@@ -264,8 +374,8 @@ func cleanTopics(in []string) []string {
 		if t == "" {
 			continue
 		}
-		if utf8.RuneCountInString(t) > maxTopicRunes {
-			t = string([]rune(t)[:maxTopicRunes])
+		if utf8.RuneCountInString(t) > maxTopicLineRunes {
+			t = string([]rune(t)[:maxTopicLineRunes])
 		}
 		out = append(out, t)
 		if len(out) == maxTopics {
@@ -273,4 +383,62 @@ func cleanTopics(in []string) []string {
 		}
 	}
 	return out
+}
+
+// parseTopicLine turns one cleaned host-typed line into a full topic card.
+//
+// A plain line (no "|") is matched case-insensitively against the preset
+// library's titles (DefaultTopics) — a hit inherits that preset's article and
+// questions; a miss becomes a bare custom title with neither (the wall
+// board's lightbox then just shows the title alone).
+//
+// A line containing "|" is the host's own rich content, packed onto one line
+// rather than a multi-field form: `title | article | question | question…`.
+// This keeps the existing one-line-per-topic textarea instead of a bigger
+// per-topic UI (see docs/PLAN.md for the reasoning).
+func parseTopicLine(line string) protocol.TopicCard {
+	if !strings.Contains(line, "|") {
+		if preset, ok := presetByTitle(line); ok {
+			return preset
+		}
+		return protocol.TopicCard{Title: clampRunes(line, maxTitleRunes)}
+	}
+
+	parts := strings.Split(line, "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	card := protocol.TopicCard{Title: clampRunes(parts[0], maxTitleRunes)}
+	if len(parts) > 1 {
+		card.Article = clampRunes(parts[1], maxArticleRunes)
+	}
+	for _, q := range parts[min(2, len(parts)):] {
+		if q == "" {
+			continue
+		}
+		card.Questions = append(card.Questions, clampRunes(q, maxQuestionRunes))
+		if len(card.Questions) == maxQuestions {
+			break
+		}
+	}
+	return card
+}
+
+// presetByTitle looks up a preset topic card by an exact, case-insensitive
+// title match.
+func presetByTitle(title string) (protocol.TopicCard, bool) {
+	for _, c := range DefaultTopics {
+		if strings.EqualFold(c.Title, title) {
+			return c, true
+		}
+	}
+	return protocol.TopicCard{}, false
+}
+
+func clampRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) > max {
+		return string(r[:max])
+	}
+	return s
 }

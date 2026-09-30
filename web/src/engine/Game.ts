@@ -10,7 +10,7 @@ import "@babylonjs/core/Culling/ray"; // enables scene.pick for click-to-move
 import { Media, type MediaStatus } from "../media/livekit";
 import { Net, resolveRealtimeUrl, type ConnStatus } from "../net/socket";
 import { fetchLiveKitToken } from "../net/tokenClient";
-import type { Anim, ChatMsg, EmoteKind, PlayerStatus, SessionState } from "../net/types";
+import type { Anim, ChatMsg, EmoteKind, PlayerStatus, SessionState, TopicCard } from "../net/types";
 import { CameraRig } from "./cameraRig";
 import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environment";
 import { LocalPlayer } from "./localPlayer";
@@ -65,6 +65,8 @@ export interface GameOptions {
   onRoundChange?: (info: RoundChangeInfo) => void;
   /** Answer to a host command we sent. */
   onHostResult?: (ok: boolean, error?: string) => void;
+  /** A wall TOPIC board was clicked — open its lightbox with the full card. */
+  onTopicBoardClick?: (card: TopicCard) => void;
 }
 
 const DEFAULT_STATUS: PlayerStatus = "present";
@@ -482,6 +484,14 @@ export class Game {
     if (info.type === PointerEventTypes.POINTERPICK && !this.rig.firstPerson) {
       const pick = info.pickInfo;
       const mesh = pick?.hit ? pick.pickedMesh : null;
+
+      const topicIndex = mesh ? this.sessionBoards.topicIndexForMesh(mesh.name) : null;
+      const topic = topicIndex !== null ? this.session?.topics?.[topicIndex] : undefined;
+      if (topic) {
+        this.opts.onTopicBoardClick?.(topic);
+        return;
+      }
+
       const seat = mesh ? this.seatByMesh.get(mesh.name) : undefined;
       if (seat) {
         this.trySit(seat);

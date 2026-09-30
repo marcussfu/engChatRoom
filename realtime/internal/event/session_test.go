@@ -76,15 +76,15 @@ func TestStartWhileRunningFails(t *testing.T) {
 
 func TestDefaultTopicsWhenNoneGiven(t *testing.T) {
 	s := startedSession(t, 2, 60)
-	if got := s.Snapshot().Topic; got != DefaultTopics[0] {
-		t.Fatalf("Topic = %q, want first default %q", got, DefaultTopics[0])
+	if got := s.Snapshot().Topic; got != DefaultTopics[0].Title {
+		t.Fatalf("Topic = %q, want first default %q", got, DefaultTopics[0].Title)
 	}
 	// Blank-only topics count as none.
 	s2 := &Session{}
 	if err := s2.Start(Config{Rounds: 1, RoundSeconds: 60, Topics: []string{"  ", ""}}, t0); err != nil {
 		t.Fatal(err)
 	}
-	if got := s2.Snapshot().Topic; got != DefaultTopics[0] {
+	if got := s2.Snapshot().Topic; got != DefaultTopics[0].Title {
 		t.Fatalf("Topic = %q, want first default", got)
 	}
 }
@@ -234,13 +234,13 @@ func TestEndFinishesImmediately(t *testing.T) {
 }
 
 func TestCleanTopics(t *testing.T) {
-	long := strings.Repeat("字", maxTopicRunes+50)
+	long := strings.Repeat("字", maxTopicLineRunes+50)
 	got := cleanTopics([]string{"  keep  ", "", "   ", long})
 	if len(got) != 2 || got[0] != "keep" {
 		t.Fatalf("cleanTopics = %q", got)
 	}
-	if n := len([]rune(got[1])); n != maxTopicRunes {
-		t.Errorf("long topic clamped to %d runes, want %d", n, maxTopicRunes)
+	if n := len([]rune(got[1])); n != maxTopicLineRunes {
+		t.Errorf("long topic clamped to %d runes, want %d", n, maxTopicLineRunes)
 	}
 
 	many := make([]string, maxTopics+10)
@@ -249,5 +249,32 @@ func TestCleanTopics(t *testing.T) {
 	}
 	if n := len(cleanTopics(many)); n != maxTopics {
 		t.Errorf("kept %d topics, want cap of %d", n, maxTopics)
+	}
+}
+
+func TestParseTopicLinePlainMatchesPreset(t *testing.T) {
+	card := parseTopicLine(strings.ToUpper(DefaultTopics[0].Title))
+	if card.Title != DefaultTopics[0].Title || card.Article != DefaultTopics[0].Article {
+		t.Fatalf("parseTopicLine(preset title, different case) = %+v, want the preset card", card)
+	}
+}
+
+func TestParseTopicLinePlainCustom(t *testing.T) {
+	card := parseTopicLine("Something nobody configured")
+	if card.Title != "Something nobody configured" || card.Article != "" || len(card.Questions) != 0 {
+		t.Fatalf("parseTopicLine(unmatched custom) = %+v, want bare title only", card)
+	}
+}
+
+func TestParseTopicLineRichDelimited(t *testing.T) {
+	card := parseTopicLine(" My Topic | An article. | Q1? | Q2? | Q3? | Q4? | Q5? | Q6? ")
+	if card.Title != "My Topic" || card.Article != "An article." {
+		t.Fatalf("parseTopicLine(rich) title/article = %q/%q", card.Title, card.Article)
+	}
+	if len(card.Questions) != maxQuestions {
+		t.Fatalf("questions = %v, want capped at %d", card.Questions, maxQuestions)
+	}
+	if card.Questions[0] != "Q1?" {
+		t.Errorf("first question = %q, want Q1?", card.Questions[0])
 	}
 }

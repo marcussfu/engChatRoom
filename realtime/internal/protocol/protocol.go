@@ -84,7 +84,20 @@ type SessionState struct {
 	// Topics is the host's own topic list (pre-cycling), capped to a handful —
 	// for a *fixed* "today's topics" display (the wall TOPIC 1/2/3 boards),
 	// separate from Topic's per-round rotation which drives the HUD instead.
-	Topics []string `json:"topics,omitempty"`
+	Topics []TopicCard `json:"topics,omitempty"`
+}
+
+// TopicCard is one topic's full content: the short prompt (also used as
+// SessionState.Topic for whichever round it's active in), an optional
+// article giving conversational context, and a handful of follow-up
+// discussion questions. Article/Questions are empty for a bare custom topic
+// a host typed without the "|"-delimited rich-content syntax (see
+// internal/event.parseTopicLine) — the wall board's lightbox just shows the
+// title alone in that case.
+type TopicCard struct {
+	Title     string   `json:"title"`
+	Article   string   `json:"article,omitempty"`
+	Questions []string `json:"questions,omitempty"`
 }
 
 // PlayerState is one avatar's authoritative state as fanned out to clients.

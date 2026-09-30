@@ -105,11 +105,14 @@ export function HostConsole({ game, session, result }: HostConsoleProps) {
                 </label>
               </div>
               <label className="host__row">
-                <span>話題（每行一個，留空用內建話題）</span>
+                <span>
+                  話題（每行一個，留空用內建話題；打一個內建話題的完整句子可以帶出現成的文章和問題；
+                  也可以自己用「標題 | 文章 | 問題 | 問題…」半形直線分隔打一整行）
+                </span>
                 <textarea
                   rows={4}
                   value={topicsText}
-                  placeholder={"What's your favorite food?\nDescribe your perfect weekend."}
+                  placeholder={"What's your favorite food, and why?\nMy Topic | A short article. | Question 1? | Question 2?"}
                   onChange={(e) => setTopicsText(e.target.value)}
                 />
               </label>

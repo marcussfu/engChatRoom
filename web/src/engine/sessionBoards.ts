@@ -1,25 +1,31 @@
 import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, type Scene } from "@babylonjs/core";
-import type { SessionState } from "../net/types";
-import { ROOM_HALF_Z } from "./environment";
+import type { SessionState, TopicCard } from "../net/types";
+import { ROOM_HALF_X } from "./environment";
 import { formatClock, remainingMs } from "./rotation";
 
 // Four wall-mounted boards for the language-exchange session (docs/PLAN.md
-// §一.A "TOPIC 1/2/3" + "TIMER 看板"), mounted along the north wall in reading
-// order: TOPIC 1, TOPIC 2, TOPIC 3, TIMER.
+// §一.A "TOPIC 1/2/3" + "TIMER 看板"), mounted along the room's narrow (west)
+// wall in reading order: TOPIC 1, TOPIC 2, TOPIC 3, TIMER.
 //
 // The topic boards are a *fixed* display of the host's first three topics —
 // not the per-round rotation (that's SessionState.topic, already shown on the
-// HUD's SessionPanel). The timer board is deliberately just a clock, nothing
-// else (feedback after the first browser test: "計時器應該就是計時器"),
-// showing 00:00 whenever no round is actively counting down.
+// HUD's SessionPanel). Each is a clickable thumbnail (title only); clicking
+// it opens a lightbox (ui/TopicLightbox.tsx) with the full article and
+// discussion questions — Game.ts wires the click through onTopicBoardClick.
+// The timer board is deliberately just a clock, nothing else (feedback after
+// the first browser test: "計時器應該就是計時器"), showing 00:00 whenever no
+// round is actively counting down.
 const BOARD_Y = 2.15;
-const BOARD_GAP_X = 7;
-const BOARD_Z = -ROOM_HALF_Z + 0.18; // just proud of wallN's inner face
+const BOARD_SPACING = 4.5; // metres between adjacent board centres, along Z
+const BOARD_X = -ROOM_HALF_X + 0.18; // just proud of wallW's inner face
+// CreatePlane's texture-correct face has normal -Z by default. Rotating -90°
+// around Y turns that into +X, which points from wallW into the room.
+const BOARD_ROTATION_Y = -Math.PI / 2;
 
-const TOPIC_WIDTH = 3.2;
+const TOPIC_WIDTH = 2.6;
 const TOPIC_HEIGHT = 1.5;
-const TOPIC_TEXTURE_W = 768;
-const TOPIC_TEXTURE_H = 360; // matches the plane's 3.2:1.5 aspect
+const TOPIC_TEXTURE_W = 624;
+const TOPIC_TEXTURE_H = 360; // matches the plane's 2.6:1.5 aspect
 
 const TIMER_WIDTH = 2.4;
 const TIMER_HEIGHT = 1.5;
@@ -33,19 +39,22 @@ interface BoardLine {
   y: number;
 }
 
+/** Board centres along Z, evenly spaced and centred on the wall. */
+function boardZ(index: number, count: number): number {
+  return (index - (count - 1) / 2) * BOARD_SPACING;
+}
+
 function makeBoardPlane(
   scene: Scene,
-  x: number,
+  z: number,
   width: number,
   height: number,
   textureW: number,
   textureH: number,
 ): { plane: Mesh; texture: DynamicTexture } {
   const plane = MeshBuilder.CreatePlane("wallBoard", { width, height }, scene);
-  plane.position.set(x, BOARD_Y, BOARD_Z);
-  // CreatePlane's texture-correct face has normal -Z by default, which here
-  // points into the wall — flip so the readable face points into the room.
-  plane.rotation.y = Math.PI;
+  plane.position.set(BOARD_X, BOARD_Y, z);
+  plane.rotation.y = BOARD_ROTATION_Y;
   plane.isPickable = false;
 
   const mat = new StandardMaterial("wallBoardMat", scene);
@@ -77,9 +86,9 @@ function paintBoard(texture: DynamicTexture, w: number, h: number, lines: BoardL
 }
 
 /** Greedy word-wrap into at most `maxLines` lines of roughly `maxChars`
- * characters each — crude, but the prompts this deals with are short
- * (event.maxTopicRunes caps at 100 runes server-side) and this only needs to
- * read comfortably from across the room, not typeset perfectly. */
+ * characters each — crude, but this only needs to read comfortably as a
+ * thumbnail title, not typeset perfectly (the full text lives in the
+ * lightbox instead). */
 function wrapText(s: string, maxChars: number, maxLines: number): string[] {
   const words = s.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -98,6 +107,10 @@ function wrapText(s: string, maxChars: number, maxLines: number): string[] {
   return lines;
 }
 
+/** A clickable thumbnail: title only (wrapped) plus a hint to click for more.
+ * The full article/questions render in the 2D lightbox once clicked —
+ * Game.ts's pointer picking resolves a hit on `meshName` back to this board's
+ * index and looks up the matching SessionState.topics[index] itself. */
 class TopicBoard {
   private readonly plane: Mesh;
   private readonly texture: DynamicTexture;
@@ -105,36 +118,46 @@ class TopicBoard {
 
   constructor(
     scene: Scene,
-    x: number,
+    z: number,
     private readonly index: number,
   ) {
-    const built = makeBoardPlane(scene, x, TOPIC_WIDTH, TOPIC_HEIGHT, TOPIC_TEXTURE_W, TOPIC_TEXTURE_H);
+    const built = makeBoardPlane(scene, z, TOPIC_WIDTH, TOPIC_HEIGHT, TOPIC_TEXTURE_W, TOPIC_TEXTURE_H);
     this.plane = built.plane;
+    this.plane.name = `topicBoard${index - 1}`;
+    this.plane.isPickable = true;
     this.texture = built.texture;
     this.paint(undefined);
   }
 
+  get meshName(): string {
+    return this.plane.name;
+  }
+
   /** `topic` is undefined until a session has started at least once, or if
    * the host configured fewer topics than there are boards. */
-  update(topic: string | undefined): void {
+  update(topic: TopicCard | undefined): void {
     this.paint(topic);
   }
 
-  private paint(topic: string | undefined): void {
-    if (topic === this.lastKey) return;
-    this.lastKey = topic;
+  private paint(topic: TopicCard | undefined): void {
+    const key = topic?.title;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
 
     const body: BoardLine[] = topic
-      ? wrapText(topic, 15, 3).map((text, i) => ({
-          text,
-          font: `bold 46px "Segoe UI", sans-serif`,
-          color: "#ffd76a",
-          y: 200 + i * 58,
-        }))
-      : [{ text: "（尚未設定）", font: `36px "Segoe UI", sans-serif`, color: "#9a8b76", y: 210 }];
+      ? [
+          ...wrapText(topic.title, 13, 3).map((text, i) => ({
+            text,
+            font: `bold 40px "Segoe UI", sans-serif`,
+            color: "#ffd76a",
+            y: 190 + i * 52,
+          })),
+          { text: "🔍 點擊查看", font: `28px "Segoe UI", sans-serif`, color: "#c8b89a", y: 330 },
+        ]
+      : [{ text: "（尚未設定）", font: `32px "Segoe UI", sans-serif`, color: "#9a8b76", y: 210 }];
 
     paintBoard(this.texture, TOPIC_TEXTURE_W, TOPIC_TEXTURE_H, [
-      { text: `TOPIC ${this.index}`, font: `bold 52px "Segoe UI", sans-serif`, color: "#f5ead6", y: 100 },
+      { text: `TOPIC ${this.index}`, font: `bold 48px "Segoe UI", sans-serif`, color: "#f5ead6", y: 90 },
       ...body,
     ]);
   }
@@ -150,8 +173,8 @@ class ClockBoard {
   private readonly texture: DynamicTexture;
   private lastKey: string | undefined;
 
-  constructor(scene: Scene, x: number) {
-    const built = makeBoardPlane(scene, x, TIMER_WIDTH, TIMER_HEIGHT, TIMER_TEXTURE_W, TIMER_TEXTURE_H);
+  constructor(scene: Scene, z: number) {
+    const built = makeBoardPlane(scene, z, TIMER_WIDTH, TIMER_HEIGHT, TIMER_TEXTURE_W, TIMER_TEXTURE_H);
     this.plane = built.plane;
     this.texture = built.texture;
     this.paint("00:00");
@@ -183,14 +206,21 @@ export class SessionBoards {
   private readonly clock: ClockBoard;
 
   constructor(scene: Scene) {
-    const xs = [-1.5, -0.5, 0.5, 1.5].map((n) => n * BOARD_GAP_X);
-    this.topics = [0, 1, 2].map((i) => new TopicBoard(scene, xs[i], i + 1));
-    this.clock = new ClockBoard(scene, xs[3]);
+    this.topics = [0, 1, 2].map((i) => new TopicBoard(scene, boardZ(i, 4), i + 1));
+    this.clock = new ClockBoard(scene, boardZ(3, 4));
   }
 
   update(session: SessionState | null, clockOffsetMs: number, nowMs: number): void {
     for (let i = 0; i < this.topics.length; i++) this.topics[i].update(session?.topics?.[i]);
     this.clock.update(session, clockOffsetMs, nowMs);
+  }
+
+  /** Maps a picked mesh's name back to which topic board it is, or null if
+   * the mesh isn't one of the topic boards (e.g. the clock board, which
+   * isn't clickable, or anything else in the scene). */
+  topicIndexForMesh(meshName: string): number | null {
+    const i = this.topics.findIndex((b) => b.meshName === meshName);
+    return i === -1 ? null : i;
   }
 
   dispose(): void {

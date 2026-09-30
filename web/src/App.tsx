@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Game } from "./engine/Game";
 import type { MediaStatus } from "./media/livekit";
 import type { ConnStatus } from "./net/socket";
-import type { SessionState } from "./net/types";
+import type { SessionState, TopicCard } from "./net/types";
 import { Chat, type ChatEntry } from "./ui/Chat";
 import { DeviceMenu } from "./ui/DeviceMenu";
 import { HostConsole } from "./ui/HostConsole";
@@ -10,6 +10,7 @@ import { Hud } from "./ui/Hud";
 import { RoundNotice, type Notice } from "./ui/RoundNotice";
 import { SessionPanel } from "./ui/SessionPanel";
 import { StatusBar } from "./ui/StatusBar";
+import { TopicLightbox } from "./ui/TopicLightbox";
 
 function guestName(): string {
   const key = "engchatroom.name";
@@ -50,6 +51,7 @@ export function App() {
   const [clockOffset, setClockOffset] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [hostResult, setHostResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [topicCard, setTopicCard] = useState<TopicCard | null>(null);
 
   const showNotice = useCallback((n: Notice) => {
     setNotice(n);
@@ -95,6 +97,7 @@ export function App() {
         });
       },
       onHostResult: (ok, error) => setHostResult({ ok, error }),
+      onTopicBoardClick: setTopicCard,
       onChat: (msg) => {
         setMessages((prev) =>
           [
@@ -140,6 +143,7 @@ export function App() {
       <HostConsole game={gameRef.current} session={session} result={hostResult} />
       <StatusBar game={gameRef.current} />
       <Chat messages={messages} onSend={(body) => gameRef.current?.sendChat(body)} />
+      <TopicLightbox card={topicCard} onClose={() => setTopicCard(null)} />
     </>
   );
 }
