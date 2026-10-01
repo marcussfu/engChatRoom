@@ -54,10 +54,20 @@ export interface Environment {
 }
 
 /** Zone radius in metres — bigger than a table's seats, smaller than half the
- * gap between tables so neighbouring zones don't overlap (see the row/col gap
- * math below: half of the tighter axis is ~2.67 m at the current room size —
- * it only grows if the room does, so 1.8 stays safe). */
+ * gap between tables so neighbouring zones don't overlap (TABLE_GAP_X/Z below
+ * are both 4 m, so half the gap is 2 m — 1.8 stays safe with a small margin). */
 const ZONE_RADIUS = 1.8;
+
+// The 4x4 table grid deliberately doesn't fill the room (docs/PLAN.md
+// 2026-10-01 feedback): it's compacted and pushed toward the east wall and
+// the room's Z-centre, leaving the whole west strip (by the TOPIC/TIMER
+// boards on wallW) open for future room features. TABLE_ORIGIN_Z is centred
+// so the gap to wallN and wallS comes out equal regardless of which one
+// "the front wall" turns out to mean.
+const TABLE_ORIGIN_X = -1; // column 0's centre
+const TABLE_GAP_X = 4;
+const TABLE_ORIGIN_Z = -6; // row 0's centre
+const TABLE_GAP_Z = 4;
 
 /**
  * Phase 0 placeholder "Cafe": floor, two lights with shadows, four walls and a
@@ -121,13 +131,11 @@ export function buildEnvironment(scene: Scene): Environment {
   const zones: ZoneMarker[] = [];
   const cols = 4;
   const rows = 4;
-  const gapX = (ROOM_HALF_X * 2 - 4) / (cols - 1);
-  const gapZ = (ROOM_HALF_Z * 2 - 4) / (rows - 1);
   let n = 1;
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
-      const x = -ROOM_HALF_X + 2 + col * gapX;
-      const z = -ROOM_HALF_Z + 2 + r * gapZ;
+      const x = TABLE_ORIGIN_X + col * TABLE_GAP_X;
+      const z = TABLE_ORIGIN_Z + r * TABLE_GAP_Z;
 
       const top = MeshBuilder.CreateCylinder(
         `table${n}`,
