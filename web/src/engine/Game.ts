@@ -51,6 +51,9 @@ export interface GameOptions {
   onFirstPerson?: (on: boolean) => void;
   /** Fires when the local player enters (zone id) or leaves (null) a conversation zone. */
   onZone?: (zoneId: string | null) => void;
+  /** Fires when the local player enters/leaves the broadcast zone (docs/PLAN.md
+   * 2026-10-01 feedback, item 6) — standing there is heard room-wide. */
+  onBroadcastZone?: (on: boolean) => void;
   onChat?: (msg: ChatMsg) => void;
   /** Fires once, when the server assigns our connection id. */
   onSelfId?: (id: string) => void;
@@ -97,11 +100,13 @@ export class Game {
   /** Null until the async bake finishes; click-to-move falls back to a
    * direct walk until then (see moveTo). */
   private navMesh: NavMesh2D | null = null;
+  private readonly broadcastZone: { x: number; z: number; radius: number };
 
   private activityUntil = 0;
   private lastSendAt = 0;
   private lastSentAnim: Anim = "idle";
   private zoneId: string | undefined;
+  private inBroadcastZone = false;
   private status: PlayerStatus = DEFAULT_STATUS;
   private raisedHand = false;
   private selfId = "";
@@ -125,13 +130,14 @@ export class Game {
     this.remotes = new RemotePlayers(this.scene, env.shadows);
     this.sessionBoards = new SessionBoards(this.scene);
     this.zones = env.zones;
+    this.broadcastZone = env.broadcastZone;
     this.tableCount = env.tables.length;
     // Baking is async (WASM); click-to-move works immediately via the
     // straight-line fallback in moveTo() and switches to real pathing once
     // this resolves.
     void buildNavMesh(
       { minX: -ROOM_HALF_X + 0.5, maxX: ROOM_HALF_X - 0.5, minZ: -ROOM_HALF_Z + 0.5, maxZ: ROOM_HALF_Z - 0.5 },
-      env.tables,
+      [...env.tables, ...env.sofas],
     ).then((nav) => {
       this.navMesh = nav;
     });
@@ -256,6 +262,11 @@ export class Game {
       this.zoneId = zoneId;
       this.opts.onZone?.(zoneId ?? null);
     }
+    const inBroadcast = this.distanceToBroadcastZone(this.local.x, this.local.z) <= this.broadcastZone.radius;
+    if (inBroadcast !== this.inBroadcastZone) {
+      this.inBroadcastZone = inBroadcast;
+      this.opts.onBroadcastZone?.(inBroadcast);
+    }
     const mustSend = zoneChanged || this.forceSend;
     this.forceSend = false;
 
@@ -274,7 +285,12 @@ export class Game {
 
     // Audio volume needs to track avatar movement even while the 3D scene
     // itself is between render-on-demand windows, so this runs unconditionally.
-    this.media.updateProximity(this.local.x, this.local.z, this.remotes.positions());
+    const remotePositions = this.remotes.positions();
+    const broadcasters = new Set<string>();
+    for (const [id, pos] of remotePositions) {
+      if (this.distanceToBroadcastZone(pos.x, pos.z) <= this.broadcastZone.radius) broadcasters.add(id);
+    }
+    this.media.updateProximity(this.local.x, this.local.z, remotePositions, broadcasters);
 
     this.sessionBoards.update(this.session, this.clockOffsetMs, Date.now());
     // A running round's countdown needs to keep visibly ticking even when
@@ -441,6 +457,10 @@ export class Game {
       if (dx * dx + dz * dz <= zone.radius * zone.radius) return zone.id;
     }
     return undefined;
+  }
+
+  private distanceToBroadcastZone(x: number, z: number): number {
+    return Math.hypot(x - this.broadcastZone.x, z - this.broadcastZone.z);
   }
 
   /** Stand up if already sitting at `seat`; otherwise walk over to it like any

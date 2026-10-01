@@ -41,6 +41,7 @@ export function App() {
   const [online, setOnline] = useState(1);
   const [firstPerson, setFirstPerson] = useState(false);
   const [zone, setZone] = useState<string | null>(null);
+  const [broadcasting, setBroadcasting] = useState(false);
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [mediaStatus, setMediaStatus] = useState<MediaStatus>("idle");
   const [micEnabled, setMicEnabled] = useState(false);
@@ -72,6 +73,7 @@ export function App() {
         selfIdRef.current = id;
       },
       onZone: (zoneId) => setZone(zoneId ? zoneLabel(zoneId) : null),
+      onBroadcastZone: setBroadcasting,
       onMediaStatus: setMediaStatus,
       onMicEnabled: setMicEnabled,
       onCameraEnabled: setCameraEnabled,
@@ -123,7 +125,7 @@ export function App() {
         status={status}
         online={online}
         firstPerson={firstPerson}
-        zoneLabel={zone}
+        zoneLabel={broadcasting ? "📢 正在廣播給全場（所有人都聽得到你）" : zone}
         mediaStatus={mediaStatus}
         micEnabled={micEnabled}
         cameraEnabled={cameraEnabled}

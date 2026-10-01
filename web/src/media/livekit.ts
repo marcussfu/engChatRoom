@@ -151,9 +151,22 @@ export class Media {
 
   /** Attenuate each remote's audio by distance to the local avatar, unless
    * Headphones Mode is on (mute everyone regardless of distance). `positions`
-   * is keyed by participant identity (== realtime player id). */
-  updateProximity(localX: number, localZ: number, positions: Map<string, { x: number; z: number }>): void {
+   * is keyed by participant identity (== realtime player id). `broadcasters`
+   * (docs/PLAN.md 2026-10-01 feedback, item 6) are speakers currently
+   * standing in the broadcast zone — heard at full volume by everyone,
+   * overriding both distance and Headphones Mode, so a host announcement
+   * reliably reaches "the whole room" rather than whoever opted in. */
+  updateProximity(
+    localX: number,
+    localZ: number,
+    positions: Map<string, { x: number; z: number }>,
+    broadcasters?: ReadonlySet<string>,
+  ): void {
     for (const [identity, el] of this.audioEls) {
+      if (broadcasters?.has(identity)) {
+        el.volume = 1;
+        continue;
+      }
       if (this.headphonesMode) {
         el.volume = 0;
         continue;
