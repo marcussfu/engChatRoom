@@ -147,9 +147,9 @@ export function buildEnvironment(scene: Scene): Environment {
       top.receiveShadows = true;
       shadows.addShadowCaster(top);
 
-      // one "anchor" (white) and one "rotator" (black) seat per table, ±Z,
-      // each facing the table centre.
-      for (const [dz, mat, role] of [
+      // one "anchor" (white) and one "rotator" (black) seat per table, ±X
+      // (face to face across the table), each facing the table centre.
+      for (const [dx, mat, role] of [
         [-0.95, chairMat, "anchor"],
         [0.95, tableMat, "rotator"],
       ] as const) {
@@ -160,11 +160,11 @@ export function buildEnvironment(scene: Scene): Environment {
           scene,
         );
         seat.material = mat;
-        seat.position.set(x, 0.25, z + dz);
+        seat.position.set(x + dx, 0.25, z);
         seat.receiveShadows = true;
         shadows.addShadowCaster(seat);
 
-        seats.push({ id, table: n, role, x, z: z + dz, yaw: dz < 0 ? 0 : Math.PI });
+        seats.push({ id, table: n, role, x: x + dx, z, yaw: dx < 0 ? Math.PI / 2 : -Math.PI / 2 });
       }
 
       tables.push({ n, x, z, radius: 0.95 });
