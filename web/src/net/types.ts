@@ -66,14 +66,22 @@ export interface SessionState {
    * *fixed* "today's topics" display (the wall TOPIC 1/2/3 boards), separate
    * from `topic`'s per-round rotation which drives the HUD instead. */
   topics?: TopicCard[];
+  /** Which of `topics` (1-based) the host has put up on the wall's big board;
+   * 0 means none featured. */
+  featuredTopic: number;
 }
 
 /** One topic's full content — mirrors protocol.TopicCard. `article`/
- * `questions` are empty for a bare custom topic the host typed without the
- * "|"-delimited rich-content syntax; the lightbox just shows the title then. */
+ * `questions`/`embedUrl` are empty for a bare custom topic the host typed
+ * without the "|"-delimited rich-content syntax; the lightbox just shows the
+ * title then. */
 export interface TopicCard {
   title: string;
   article?: string;
+  /** A link the host included (e.g. a YouTube video related to the topic) —
+   * shown as an iframe in the lightbox. Many non-YouTube sites refuse to be
+   * embedded (X-Frame-Options/CSP), so this isn't guaranteed to render. */
+  embedUrl?: string;
   questions?: string[];
 }
 
@@ -149,6 +157,8 @@ export type HostMsg =
       topics: string[];
     }
   | { t: "host"; action: "next" | "end"; key: string }
-  | { t: "host"; action: "extend"; key: string; seconds: number };
+  | { t: "host"; action: "extend"; key: string; seconds: number }
+  /** index 1-3 features that TOPIC board on the wall's big board; 0 clears it. */
+  | { t: "host"; action: "feature"; key: string; index: number };
 
 export type ClientMsg = JoinMsg | InputMsg | SendChatMsg | SendEmoteMsg | HostMsg;

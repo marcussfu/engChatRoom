@@ -64,6 +64,26 @@ export function HostConsole({ game, session, result }: HostConsoleProps) {
             />
           </label>
 
+          {session?.topics && session.topics.length > 0 && (
+            <div className="host__row">
+              <span>大看板顯示（哪個話題呈現在牆上的大看板）</span>
+              <div className="host__actions">
+                {session.topics.map((t, i) => (
+                  <button
+                    key={t.title}
+                    className={`hud__btn${session.featuredTopic === i + 1 ? " host__feature--active" : ""}`}
+                    onClick={() => game?.hostFeature(key, i + 1)}
+                  >
+                    TOPIC {i + 1}
+                  </button>
+                ))}
+                <button className="hud__btn" onClick={() => game?.hostFeature(key, 0)}>
+                  清空
+                </button>
+              </div>
+            </div>
+          )}
+
           {running ? (
             <div className="host__actions">
               <button className="hud__btn" onClick={() => game?.hostNext(key)}>
@@ -107,12 +127,15 @@ export function HostConsole({ game, session, result }: HostConsoleProps) {
               <label className="host__row">
                 <span>
                   話題（每行一個，留空用內建話題；打一個內建話題的完整句子可以帶出現成的文章和問題；
-                  也可以自己用「標題 | 文章 | 問題 | 問題…」半形直線分隔打一整行）
+                  也可以自己用「標題 | 文章 | 連結(可省略) | 問題 | 問題…」半形直線分隔打一整行——
+                  其中一段打 http(s):// 開頭的網址會被當成可嵌入的連結，不算進問題）
                 </span>
                 <textarea
                   rows={4}
                   value={topicsText}
-                  placeholder={"What's your favorite food, and why?\nMy Topic | A short article. | Question 1? | Question 2?"}
+                  placeholder={
+                    "What's your favorite food, and why?\nMy Topic | A short article. | https://youtube.com/watch?v=... | Question 1? | Question 2?"
+                  }
                   onChange={(e) => setTopicsText(e.target.value)}
                 />
               </label>

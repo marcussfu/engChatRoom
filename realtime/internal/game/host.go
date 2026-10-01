@@ -50,6 +50,8 @@ func (r *Room) handleHost(c *Client, msg protocol.ClientMsg) {
 		err = r.session.Extend(time.Duration(msg.Seconds)*time.Second, now)
 	case "end":
 		err = r.session.End(now)
+	case "feature":
+		err = r.session.FeatureTopic(msg.Index)
 	default:
 		err = fmt.Errorf("unknown host action %q", msg.Action)
 	}

@@ -278,3 +278,48 @@ func TestParseTopicLineRichDelimited(t *testing.T) {
 		t.Errorf("first question = %q, want Q1?", card.Questions[0])
 	}
 }
+
+func TestParseTopicLineRichDelimitedWithEmbedURL(t *testing.T) {
+	card := parseTopicLine("My Topic | An article. | https://youtube.com/embed/abc123 | Q1? | Q2?")
+	if card.EmbedURL != "https://youtube.com/embed/abc123" {
+		t.Fatalf("EmbedURL = %q, want the link", card.EmbedURL)
+	}
+	if len(card.Questions) != 2 || card.Questions[0] != "Q1?" || card.Questions[1] != "Q2?" {
+		t.Fatalf("questions = %v, want [Q1? Q2?] (the link shouldn't count as one)", card.Questions)
+	}
+}
+
+func TestFeatureTopicValidatesRange(t *testing.T) {
+	s := &Session{}
+	for _, bad := range []int{-1, boardTopics + 1} {
+		if err := s.FeatureTopic(bad); err == nil {
+			t.Errorf("FeatureTopic(%d) succeeded, want a range error", bad)
+		}
+	}
+	if err := s.FeatureTopic(0); err != nil {
+		t.Errorf("FeatureTopic(0) (clear) failed: %v", err)
+	}
+	if err := s.FeatureTopic(boardTopics); err != nil {
+		t.Errorf("FeatureTopic(%d) failed: %v", boardTopics, err)
+	}
+}
+
+func TestFeatureTopicReflectedInSnapshot(t *testing.T) {
+	s := startedSession(t, 2, 60, "A", "B")
+	if err := s.FeatureTopic(2); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Snapshot().FeaturedTopic; got != 2 {
+		t.Fatalf("FeaturedTopic = %d, want 2", got)
+	}
+	// Start() resets it for a fresh session.
+	if err := s.End(t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(Config{Rounds: 1, RoundSeconds: 30}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Snapshot().FeaturedTopic; got != 0 {
+		t.Fatalf("FeaturedTopic after restart = %d, want reset to 0", got)
+	}
+}

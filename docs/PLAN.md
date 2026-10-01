@@ -244,12 +244,44 @@
 >   `vitest(25，新增 4 個)`/`build`（確認這個 WASM 依賴真的能被 Vite 打包，這是原本點名的
 >   最大風險）；另外手動啟動一次 `vite dev` 確認不跟使用者本來開著的 dev server 衝突、能乾淨
 >   啟動。**瀏覽器實際的走路觀感、dev server 載入 WASM 的行為完全沒驗證過**。
->   **收工檢查點（2026-10-01，三續）**：待 push。
->   **下次接續**：(1) 請使用者瀏覽器測 navmesh（`pnpm dev` 可能需要重啟一次讓新依賴生效，
->   Vite 偵測到 `vite.config.ts` 改動通常會自動重啟；點地板走到桌子後面看會不會繞路、會不會卡住、
->   繞路看起來順不順）；(2) 連同這幾天的桌椅排列/顏色一起測掉；(3) 語音/視訊瀏覽器驗收清單仍等
->   能測麥克風/鏡頭的環境。Phase 2 清單到這裡全部動工完畢，下一步可以考慮進 Phase 3 或先把
->   這幾個新功能的瀏覽器回饋收斂完。
+>   **收工檢查點（2026-10-01，三續）**：`fe8a923` 已 push，CI 綠燈（含乾淨環境下確認 WASM
+>   依賴真的打包得進去）。
+> - 2026-10-01（四續）：使用者丟了一張實際 SpotVirtual 類產品的截圖，要求比對「截圖 vs 我們現在」
+>   列出差異清單。來回兩輪比對（第一次解析度不夠判斷錯了桌椅樣式，使用者要求重新仔細看一次，
+>   第二次修正）後，使用者從落落長的差異清單裡挑了 6 項要做，其他明確說不用管：
+>   (1) 椅子樣式改成有椅背（不只換間距/朝向，造型也要像截圖）；(2) 黑板 1/2/3 可以貼連結、
+>   嵌入分享畫面；(3) 南牆大看板讓主持人選一個 TOPIC 呈現完整內容；(4) 小黑板跟大看板都能點擊
+>   彈出燈箱；(5) 北牆紅沙發可以坐、一起聊天；(6) 大看板前的紫色地板是廣播區，站進去全場都聽得到。
+>   分三個 commit 做完：
+>   - `923ae48`：椅子改成「座墊+椅背」兩塊方塊（不再是單一方塊）；北牆加兩張三人沙發，完全重用
+>     既有的 seat/click-to-sit 機制（新的 `"sofa"` 座位角色，id 不符合桌號+顏色的正則，
+>     自動被語言交換的換位機制排除，不用額外寫判斷）；沙發邊坐邊聊不需要額外的 zone 機制——
+>     語音本來就是純距離判斷，沙發座位間距 0.8m 本來就在 3m 全音量範圍內。南牆大看板前方加一塊
+>     紫色地板（`BROADCAST_ZONE`），`Media.updateProximity` 新增 `broadcasters` 參數，站在
+>     廣播區裡的人對所有人都是滿音量（無視距離、無視對方耳機模式），`Game.ts` 每幀算出誰站在
+>     區域內傳給它；順手把沙發也餵給 navmesh 當障礙物（不然新加的家具會被穿模）。
+>   - 之後（Go 協定變更）：`protocol.TopicCard` 加 `EmbedURL`，`parseTopicLine` 掃到
+>     `http(s)://` 開頭的片段就當連結、不算進問題；`SessionState` 加 `FeaturedTopic int`
+>     （1-based，0=無，故意不用 `omitempty`——Go 的 int 零值本來就是「無」，每次都要送才能跟
+>     「欄位整個不存在」分清楚），新的 host 動作 `"feature"`（`event.Session.FeatureTopic`
+>     驗證範圍 0-3，不綁定輪次狀態，活動進行中或剛結束都能切換，純粹是展示選擇不是輪次指令）。
+>     新增 6 個 Go 測試（embed URL 解析 2 個、FeatureTopic 驗證/快照各 1 個、WS 端對端 1 個）。
+>   - 前端：`sessionBoards.ts` 新增 `FeaturedBoard`（南牆、`rotation.y=0`——跟北牆/西牆案例一樣
+>     用同一套「前進向量」公式反推，這次牆在房間正向端、室內在負向端，不需要翻轉，直接套用
+>     Babylon `CreatePlane` 預設方向），顯示完整文章+2個問題+連結提示，可點擊；
+>     `TopicLightbox.tsx` 新增 `<iframe>` 嵌入（YouTube 連結自動轉成 `/embed/` 格式方便顯示，
+>     其他網站很多會因為 X-Frame-Options 拒絕嵌入，這是瀏覽器本身的限制不是我們能解決的）；
+>     `HostConsole.tsx` 新增「大看板顯示」按鈕組（TOPIC 1/2/3 + 清空）。
+>   全綠：web `typecheck`/`lint`/`vitest(25)`/`build`；realtime `gofmt`/`vet`/`build`/`test`
+>   （含新增的 6 個測試）。**完全沒用瀏覽器實測**——這批東西（椅子造型、沙發坐下效果、廣播區
+>   音量切換、連結嵌入燈箱、南牆大看板版面、跟 navmesh 一起測走位會不會被沙發卡住）全部都要
+>   實測才知道。
+>   **收工檢查點（2026-10-01，四續）**：待 push。
+>   **下次接續**：(1) 請使用者瀏覽器一次測掉這幾天累積的所有新功能（navmesh 走位、椅子/沙發/
+>   廣播區、大看板+連結嵌入燈箱）；(2) 沒問題的話 Phase 2 清單可以視為全部收工，下一步考慮
+>   進 Phase 3，或先處理使用者這次明確說「不用管」但清單裡還留著的項目（牆面裝飾、側邊欄等，
+>   見上面「截圖比對」那兩則訊息的完整差異清單）；(3) 語音/視訊瀏覽器驗收清單仍等能測麥克風/
+>   鏡頭的環境。
 
 ## Context（為什麼做這個）
 
@@ -926,6 +958,70 @@ WASM 用 ESM import，社群已不再維護舊的 `recast-detour` 寫法），�
    voxel 轉換，沒有為這個場景的實際大小調過——如果走起來感覺怪，這些是第一個該檢查的地方。
 4. 合成地板網格解析度固定 0.5m，桌子的圓形 keep-out 用方格近似，實際排除的形狀不是正圓（會比
    實際圓形稍大一點點，偏安全的方向，但也代表走道可能比看起來的窄一點點）。
+5. **2026-10-01 補**：新加的兩張沙發也已經餵給 navmesh 當障礙物（`environment.ts` 的
+   `Environment.sofas`，`Game.ts` 烘焙時跟 `tables` 一起傳進去），沙發footprint 用圓形近似
+   （半寬+0.3 margin），同樣沒瀏覽器驗證過繞不繞得順。
+
+#### Phase 2 現況（2026-10-01）—— 截圖比對後的六項功能：椅子造型/沙發/廣播區/連結嵌入/大看板
+
+使用者丟了一張實際 SpotVirtual 類產品「輕鬆聊英文咖啡」的截圖，要求列出「截圖 vs 我們現在」的
+差異清單。整個差異清單很長（牆面裝飾、側邊欄、底部工具列圖示等都列了），使用者明確只挑了 6 項
+要做，其餘的說「不用管」。
+
+**已完成**：
+1. **椅子造型**（純視覺，`environment.ts` 的 `createChair()`）：從單一方塊改成「座墊
+   （扁平方塊）+ 椅背（直立方塊）」兩塊組成，椅背位置用跟椅子朝向 `yaw` 連動的公式算
+   （`-sin(yaw)*0.21, -cos(yaw)*0.21` 偏移，背對面向方向），跟之前算西牆/南牆看板旋轉角度
+   用的「前進向量 = (sin yaw, 0, cos yaw)」是同一套換算。兩塊都用同一個 mesh name
+   （`seat{id}`），點哪一塊都能命中同一張椅子。
+2. **北牆兩張三人沙發**（`environment.ts`）：完全重用既有的 seat/click-to-sit 機制——新增
+   `SeatMarker.role` 的第三種值 `"sofa"`（id 格式 `sofa{n}-{i}`，不符合 `rotation.ts`
+   `parseSeatId` 預期的「數字+單一字母」格式，**自動**被語言交換的換位機制排除，完全不用額外
+   判斷）。三人座位間距 0.8m，全部落在既有的 3m 全音量距離內，所以「坐在一起能聊天」不需要
+   任何新的 zone/音訊機制——這點直接用現有的純距離音量邏輯白嫖。沙發 footprint 也餵給 navmesh
+   當障礙物（見上「已知限制」第 5 點）。
+3. **廣播區**（南牆大看板前方的紫色地板圓盤，`environment.ts` 的 `BROADCAST_ZONE`）：
+   `media/livekit.ts` 的 `Media.updateProximity()` 新增 `broadcasters?: ReadonlySet<string>`
+   參數，命中的人一律滿音量（**同時覆蓋距離衰減跟 Headphones Mode**——站在廣播區發言就是要
+   讓全場聽到，連開了耳機模式的人都聽得到，這點是刻意的設計決定，没有另外做成可選）。
+   `Game.ts` 每幀算出目前有哪些 remote 站在區域內（純座標距離比對，不依賴已經同步的
+   `zoneId` 欄位，因為那個欄位目前只拿來給 HUD 標籤用，語意不適合硬塞「broadcast」進去）；
+   本地玩家自己站進區域會在 HUD 顯示「📢 正在廣播給全場」（新 `onBroadcastZone` callback，
+   跟既有的 `onZone` 分開，沒有共用同一組狀態，避免語意混在一起）。
+4. **TOPIC 連結嵌入**（Go `protocol.TopicCard.EmbedURL` + `event.parseTopicLine`）：主持人在
+   `|` 分隔的自訂話題裡，任何一段打 `http://`／`https://` 開頭的網址會被當成嵌入連結（第一個
+   命中的算數，位置不拘），不算進問題清單；`TopicLightbox.tsx` 遇到 `embedUrl` 就渲染一個
+   `<iframe>`，YouTube 的網址（`youtube.com/watch?v=`、`youtu.be/`）會自動轉成 `/embed/`
+   格式方便顯示——**但大部分非 YouTube 網站會因為自己的 `X-Frame-Options`/CSP 設定拒絕被嵌入，
+   這是瀏覽器本身的安全限制，不是我們能繞過的**，PLAN.md 原本就記錄過「WebGL 貼圖塞不了活的
+   iframe」，這次等於是確認「就算放到 2D 燈箱（不是 3D 貼圖），能不能嵌入還是要看對方網站是否
+   允許」。
+5. **主持人可控的南牆大看板**（`SessionState.FeaturedTopic`，1-based，0=無）：新的 host 動作
+   `"feature"`（`event.Session.FeatureTopic(index)`），驗證範圍 0-3，**不綁定輪次狀態**——
+   活動進行中或剛結束都能切換，因為這是「展示選擇」不是「輪次指令」，跟 next/extend/end 那組
+   命令的語意不同。`sessionBoards.ts` 新增 `FeaturedBoard` class，掛在南牆（`rotation.y=0`，
+   南牆剛好是 Babylon `CreatePlane` 預設方向就對的那面牆，不用額外翻轉——跟西牆
+   `rotation.y=-π/2`、北牆（第一版看板）`rotation.y=π` 用的是同一套「前進向量」反推公式，
+   这次剛好算出不用轉），顯示完整文章+最多 2 個問題+連結提示，點擊一樣開燈箱。
+6. **小黑板+大看板都能點擊開燈箱**：`Game.ts` 的 pointer-pick 判斷新增
+   `isFeaturedBoardMesh()` 分支，命中大看板時查 `session.featuredTopic` 對應的卡片，跟原本
+   TOPIC 1/2/3 的判斷並列（互不干擾，mesh name 不會撞）。
+- 新增 6 個 Go 測試（`TestParseTopicLineRichDelimitedWithEmbedURL`、
+  `TestFeatureTopicValidatesRange`、`TestFeatureTopicReflectedInSnapshot`、
+  `TestHostFeatureTopicBroadcasts` 等）。全綠：web `typecheck`/`lint`/`vitest(25)`/`build`；
+  realtime `gofmt`/`vet`/`build`/`test`。
+
+**已知限制 / 仍待瀏覽器驗證**
+1. **完全沒用瀏覽器實測**——椅子造型好不好看、沙發坐下的視覺效果、廣播區進出時機/HUD 提示
+   會不會太突兀、南牆大看板的版面排版（標題+文章+問題+提示全部塞進一塊 816×504 的貼圖，
+   有沒有擠在一起或超出邊界）、iframe 嵌入實際能不能顯示（尤其 YouTube 以外的連結），全部
+   都要實測才知道。
+2. 廣播區「覆蓋耳機模式」是我自己依照「廣播給全場」字面意思做的判斷，使用者沒有明確說要不要
+   蓋過耳機模式——如果實測後覺得耳機模式應該優先（使用者主動選擇不聽任何人），這裡要改。
+3. 連結嵌入目前沒有輸入驗證——host 打了格式錯誤的網址，燈箱就是安靜地顯示一個空白/錯誤的
+   iframe，沒有任何錯誤提示。
+4. 大看板的文章/問題顯示用固定座標排版（不是像 lightbox 那樣動態排列），如果話題的文章或
+   問題特別長，有超出貼圖邊界、跟底部提示文字重疊的風險，沒有實測過各種長度的內容。
 
 ### Phase 3 — 擴增 + 進階 AI + 打磨
 - Interest management（grid / octree，只送附近實體）；Redis/NATS pub/sub、多實例、依 room sharding。

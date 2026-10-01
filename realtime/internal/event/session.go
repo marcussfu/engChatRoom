@@ -189,6 +189,9 @@ type Session struct {
 	topics     []protocol.TopicCard // exactly `rounds` long once started (cycled from baseCards)
 	baseCards  []protocol.TopicCard // the host's own list, pre-cycling — see SessionState.Topics
 	finishedAt time.Time
+	// featuredTopic is which of baseCards[0:boardTopics] the host has put up
+	// on the wall's big board (1-based; 0 = none) — see FeatureTopic.
+	featuredTopic int
 }
 
 // Start begins a new session. It fails if one is already running, but is
@@ -228,6 +231,22 @@ func (s *Session) Start(cfg Config, now time.Time) error {
 	s.roundEnd = now.Add(s.roundDur)
 	s.topics = topics
 	s.baseCards = cards
+	s.featuredTopic = 0
+	return nil
+}
+
+// FeatureTopic sets which of the wall's TOPIC 1-3 boards (1-based) is also
+// shown on the big board, or clears it with 0. Unlike Next/Extend/End this
+// isn't tied to a running round — a host can feature a topic any time a
+// session exists (including while the finished banner lingers), since it's
+// a presentation choice, not a round-timing command.
+func (s *Session) FeatureTopic(index int) error {
+	if index < 0 || index > boardTopics {
+		return fmt.Errorf("index must be between 0 and %d", boardTopics)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.featuredTopic = index
 	return nil
 }
 
@@ -327,27 +346,30 @@ func (s *Session) resetLocked() {
 	s.topics = nil
 	s.baseCards = nil
 	s.finishedAt = time.Time{}
+	s.featuredTopic = 0
 }
 
 func (s *Session) snapshotLocked() protocol.SessionState {
 	switch s.phase {
 	case phaseRunning:
 		return protocol.SessionState{
-			Active:      true,
-			Round:       s.round,
-			Rounds:      s.rounds,
-			RoundEndsAt: s.roundEnd.UnixMilli(),
-			RoundMs:     s.roundDur.Milliseconds(),
-			Topic:       s.topics[s.round-1].Title,
-			Topics:      firstN(s.baseCards, boardTopics),
+			Active:        true,
+			Round:         s.round,
+			Rounds:        s.rounds,
+			RoundEndsAt:   s.roundEnd.UnixMilli(),
+			RoundMs:       s.roundDur.Milliseconds(),
+			Topic:         s.topics[s.round-1].Title,
+			Topics:        firstN(s.baseCards, boardTopics),
+			FeaturedTopic: s.featuredTopic,
 		}
 	case phaseFinished:
 		return protocol.SessionState{
-			Finished: true,
-			Round:    s.round,
-			Rounds:   s.rounds,
-			RoundMs:  s.roundDur.Milliseconds(),
-			Topics:   firstN(s.baseCards, boardTopics),
+			Finished:      true,
+			Round:         s.round,
+			Rounds:        s.rounds,
+			RoundMs:       s.roundDur.Milliseconds(),
+			Topics:        firstN(s.baseCards, boardTopics),
+			FeaturedTopic: s.featuredTopic,
 		}
 	default:
 		return protocol.SessionState{}
@@ -416,12 +438,24 @@ func parseTopicLine(line string) protocol.TopicCard {
 		if q == "" {
 			continue
 		}
-		card.Questions = append(card.Questions, clampRunes(q, maxQuestionRunes))
-		if len(card.Questions) == maxQuestions {
-			break
+		// A segment that looks like a link (e.g. a YouTube video related to
+		// the topic) is the embeddable link, not a discussion question — the
+		// first one wins, in whatever position the host put it.
+		if card.EmbedURL == "" && isEmbeddableURL(q) {
+			card.EmbedURL = clampRunes(q, maxArticleRunes)
+			continue
+		}
+		if len(card.Questions) < maxQuestions {
+			card.Questions = append(card.Questions, clampRunes(q, maxQuestionRunes))
 		}
 	}
 	return card
+}
+
+// isEmbeddableURL is a loose check for "this segment is a link the host
+// meant as TopicCard.EmbedURL" rather than a discussion question.
+func isEmbeddableURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
 }
 
 // presetByTitle looks up a preset topic card by an exact, case-insensitive

@@ -450,6 +450,11 @@ export class Game {
     this.net.sendHost({ t: "host", action: "end", key });
   }
 
+  /** Puts TOPIC `index` (1-3) up on the wall's big board, or clears it with 0. */
+  hostFeature(key: string, index: number): void {
+    this.net.sendHost({ t: "host", action: "feature", key, index });
+  }
+
   private zoneAt(x: number, z: number): string | undefined {
     for (const zone of this.zones) {
       const dx = x - zone.x;
@@ -528,7 +533,13 @@ export class Game {
       const mesh = pick?.hit ? pick.pickedMesh : null;
 
       const topicIndex = mesh ? this.sessionBoards.topicIndexForMesh(mesh.name) : null;
-      const topic = topicIndex !== null ? this.session?.topics?.[topicIndex] : undefined;
+      const isFeaturedBoard = mesh ? this.sessionBoards.isFeaturedBoardMesh(mesh.name) : false;
+      const topic =
+        topicIndex !== null
+          ? this.session?.topics?.[topicIndex]
+          : isFeaturedBoard && this.session?.featuredTopic
+            ? this.session.topics?.[this.session.featuredTopic - 1]
+            : undefined;
       if (topic) {
         this.opts.onTopicBoardClick?.(topic);
         return;

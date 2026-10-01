@@ -63,6 +63,9 @@ type ClientMsg struct {
 	RoundSeconds int      `json:"roundSeconds"`
 	Topics       []string `json:"topics"`
 	Seconds      int      `json:"seconds"`
+	// Index is action "feature"'s argument: 1-3 picks which of
+	// SessionState.Topics to feature on the wall's big board, 0 clears it.
+	Index int `json:"index"`
 }
 
 // SessionState is the language-exchange session as every client sees it.
@@ -85,19 +88,26 @@ type SessionState struct {
 	// for a *fixed* "today's topics" display (the wall TOPIC 1/2/3 boards),
 	// separate from Topic's per-round rotation which drives the HUD instead.
 	Topics []TopicCard `json:"topics,omitempty"`
+	// FeaturedTopic is which of Topics the host has put up on the wall's big
+	// board (1-based; 0 means none featured) — see ClientMsg's "feature"
+	// host action. Always sent (no omitempty) so 0 is distinguishable from
+	// "field absent", since Go's int zero value already means "none".
+	FeaturedTopic int `json:"featuredTopic"`
 }
 
 // TopicCard is one topic's full content: the short prompt (also used as
 // SessionState.Topic for whichever round it's active in), an optional
-// article giving conversational context, and a handful of follow-up
-// discussion questions. Article/Questions are empty for a bare custom topic
-// a host typed without the "|"-delimited rich-content syntax (see
-// internal/event.parseTopicLine) — the wall board's lightbox just shows the
-// title alone in that case.
+// article giving conversational context, a handful of follow-up discussion
+// questions, and an optional embeddable link (e.g. a YouTube video related
+// to the topic — docs/PLAN.md 2026-10-01 feedback, item 2). Article/
+// Questions/EmbedURL are empty for a bare custom topic a host typed without
+// the "|"-delimited rich-content syntax (see internal/event.parseTopicLine)
+// — the wall board's lightbox just shows the title alone in that case.
 type TopicCard struct {
 	Title     string   `json:"title"`
 	Article   string   `json:"article,omitempty"`
 	Questions []string `json:"questions,omitempty"`
+	EmbedURL  string   `json:"embedUrl,omitempty"`
 }
 
 // PlayerState is one avatar's authoritative state as fanned out to clients.

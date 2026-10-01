@@ -139,6 +139,37 @@ func findSession(t *testing.T, h hostRig, c *websocket.Conn, pred func(*protocol
 	return nil
 }
 
+func TestHostFeatureTopicBroadcasts(t *testing.T) {
+	h := newHostRig(t, testHostKey)
+	hostConn, _ := h.join(t)
+	guest, _ := h.join(t)
+
+	if r := host(t, h, hostConn, protocol.ClientMsg{
+		Action: "start", Key: testHostKey, Rounds: 1, RoundSeconds: 60, Topics: []string{"A", "B"},
+	}); !r.OK {
+		t.Fatalf("start: %+v", r)
+	}
+	if r := host(t, h, hostConn, protocol.ClientMsg{Action: "feature", Key: testHostKey, Index: 2}); !r.OK {
+		t.Fatalf("feature: %+v", r)
+	}
+
+	for name, c := range map[string]*websocket.Conn{"host": hostConn, "guest": guest} {
+		st := findSession(t, h, c, func(s *protocol.SessionState) bool { return s.FeaturedTopic == 2 })
+		if st.FeaturedTopic != 2 {
+			t.Fatalf("%s saw FeaturedTopic %d, want 2", name, st.FeaturedTopic)
+		}
+	}
+
+	if r := host(t, h, hostConn, protocol.ClientMsg{Action: "feature", Key: testHostKey, Index: 0}); !r.OK {
+		t.Fatalf("feature clear: %+v", r)
+	}
+	findSession(t, h, hostConn, func(s *protocol.SessionState) bool { return s.FeaturedTopic == 0 })
+
+	if r := host(t, h, hostConn, protocol.ClientMsg{Action: "feature", Key: testHostKey, Index: 99}); r.OK {
+		t.Fatal("feature with out-of-range index succeeded, want error")
+	}
+}
+
 func TestHostRejectsWrongKey(t *testing.T) {
 	h := newHostRig(t, testHostKey)
 	c, _ := h.join(t)

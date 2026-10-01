@@ -1,20 +1,24 @@
 import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, type Scene } from "@babylonjs/core";
 import type { SessionState, TopicCard } from "../net/types";
-import { ROOM_HALF_X } from "./environment";
+import { ROOM_HALF_X, ROOM_HALF_Z } from "./environment";
 import { formatClock, remainingMs } from "./rotation";
 
-// Four wall-mounted boards for the language-exchange session (docs/PLAN.md
-// §一.A "TOPIC 1/2/3" + "TIMER 看板"), mounted along the room's narrow (west)
-// wall in reading order: TOPIC 1, TOPIC 2, TOPIC 3, TIMER.
+// Wall-mounted boards for the language-exchange session (docs/PLAN.md §一.A
+// "TOPIC 1/2/3" + "TIMER 看板"). Four are mounted along the room's narrow
+// (west) wall in reading order: TOPIC 1, TOPIC 2, TOPIC 3, TIMER. A fifth,
+// bigger board mounts on wallS (2026-10-01 feedback, item 3): the host can
+// "feature" one of TOPIC 1-3 there, so the room has one obvious "what we're
+// discussing" focal point instead of everyone having to walk over and read a
+// thumbnail.
 //
 // The topic boards are a *fixed* display of the host's first three topics —
 // not the per-round rotation (that's SessionState.topic, already shown on the
-// HUD's SessionPanel). Each is a clickable thumbnail (title only); clicking
-// it opens a lightbox (ui/TopicLightbox.tsx) with the full article and
-// discussion questions — Game.ts wires the click through onTopicBoardClick.
-// The timer board is deliberately just a clock, nothing else (feedback after
-// the first browser test: "計時器應該就是計時器"), showing 00:00 whenever no
-// round is actively counting down.
+// HUD's SessionPanel). Each (including the featured board) is clickable;
+// clicking opens a lightbox (ui/TopicLightbox.tsx) with the full article,
+// discussion questions, and embedded link if any — Game.ts wires the click
+// through onTopicBoardClick. The timer board is deliberately just a clock,
+// nothing else (feedback after the first browser test: "計時器應該就是計時
+// 器"), showing 00:00 whenever no round is actively counting down.
 const BOARD_Y = 2.15;
 const BOARD_SPACING = 4.5; // metres between adjacent board centres, along Z
 const BOARD_X = -ROOM_HALF_X + 0.18; // just proud of wallW's inner face
@@ -32,6 +36,15 @@ const TIMER_HEIGHT = 1.5;
 const TIMER_TEXTURE_W = 640;
 const TIMER_TEXTURE_H = 400; // matches the plane's 2.4:1.5 aspect
 
+// The featured board sits on wallS, off to one side of spawn, above the
+// broadcast zone (environment.ts's BROADCAST_ZONE) — both are part of the
+// same "stage" corner (2026-10-01 feedback, items 3 and 6).
+const FEATURED_X = 9;
+const FEATURED_WIDTH = 3.4;
+const FEATURED_HEIGHT = 2.1;
+const FEATURED_TEXTURE_W = 816;
+const FEATURED_TEXTURE_H = 504; // matches the plane's 3.4:2.1 aspect
+
 interface BoardLine {
   text: string;
   font: string;
@@ -39,22 +52,29 @@ interface BoardLine {
   y: number;
 }
 
-/** Board centres along Z, evenly spaced and centred on the wall. */
+interface WallMount {
+  x: number;
+  y: number;
+  z: number;
+  rotationY: number;
+}
+
+/** Board centres along Z, evenly spaced and centred on wallW. */
 function boardZ(index: number, count: number): number {
   return (index - (count - 1) / 2) * BOARD_SPACING;
 }
 
 function makeBoardPlane(
   scene: Scene,
-  z: number,
+  mount: WallMount,
   width: number,
   height: number,
   textureW: number,
   textureH: number,
 ): { plane: Mesh; texture: DynamicTexture } {
   const plane = MeshBuilder.CreatePlane("wallBoard", { width, height }, scene);
-  plane.position.set(BOARD_X, BOARD_Y, z);
-  plane.rotation.y = BOARD_ROTATION_Y;
+  plane.position.set(mount.x, mount.y, mount.z);
+  plane.rotation.y = mount.rotationY;
   plane.isPickable = false;
 
   const mat = new StandardMaterial("wallBoardMat", scene);
@@ -118,10 +138,10 @@ class TopicBoard {
 
   constructor(
     scene: Scene,
-    z: number,
+    mount: WallMount,
     private readonly index: number,
   ) {
-    const built = makeBoardPlane(scene, z, TOPIC_WIDTH, TOPIC_HEIGHT, TOPIC_TEXTURE_W, TOPIC_TEXTURE_H);
+    const built = makeBoardPlane(scene, mount, TOPIC_WIDTH, TOPIC_HEIGHT, TOPIC_TEXTURE_W, TOPIC_TEXTURE_H);
     this.plane = built.plane;
     this.plane.name = `topicBoard${index - 1}`;
     this.plane.isPickable = true;
@@ -173,8 +193,8 @@ class ClockBoard {
   private readonly texture: DynamicTexture;
   private lastKey: string | undefined;
 
-  constructor(scene: Scene, z: number) {
-    const built = makeBoardPlane(scene, z, TIMER_WIDTH, TIMER_HEIGHT, TIMER_TEXTURE_W, TIMER_TEXTURE_H);
+  constructor(scene: Scene, mount: WallMount) {
+    const built = makeBoardPlane(scene, mount, TIMER_WIDTH, TIMER_HEIGHT, TIMER_TEXTURE_W, TIMER_TEXTURE_H);
     this.plane = built.plane;
     this.texture = built.texture;
     this.paint("00:00");
@@ -200,19 +220,98 @@ class ClockBoard {
   }
 }
 
-/** Owns all four wall boards and fans one session update out to each. */
+/** The host-featured big board on wallS (item 3): shows one TOPIC's full
+ * content (not just a thumbnail) so the room has one obvious shared focal
+ * point, without everyone needing to walk over to a TOPIC 1/2/3 thumbnail.
+ * Clickable too, opening the same lightbox. */
+class FeaturedBoard {
+  private readonly plane: Mesh;
+  private readonly texture: DynamicTexture;
+  private lastKey: string | undefined;
+
+  constructor(scene: Scene) {
+    const mount: WallMount = { x: FEATURED_X, y: BOARD_Y, z: ROOM_HALF_Z - 0.18, rotationY: 0 };
+    const built = makeBoardPlane(scene, mount, FEATURED_WIDTH, FEATURED_HEIGHT, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H);
+    this.plane = built.plane;
+    this.plane.name = "featuredBoard";
+    this.plane.isPickable = true;
+    this.texture = built.texture;
+    this.paint(undefined);
+  }
+
+  get meshName(): string {
+    return this.plane.name;
+  }
+
+  /** `card` is undefined until the host features a topic (see
+   * Game.hostFeature / SessionState.featuredTopic). */
+  update(card: TopicCard | undefined): void {
+    this.paint(card);
+  }
+
+  private paint(card: TopicCard | undefined): void {
+    const key = card?.title;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+
+    if (!card) {
+      paintBoard(this.texture, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H, [
+        { text: "目前討論主題", font: `bold 36px "Segoe UI", sans-serif`, color: "#c8b89a", y: 70 },
+        { text: "（主持人尚未選擇）", font: `30px "Segoe UI", sans-serif`, color: "#9a8b76", y: 260 },
+      ]);
+      return;
+    }
+
+    const lines: BoardLine[] = [
+      { text: "目前討論主題", font: `bold 30px "Segoe UI", sans-serif`, color: "#c8b89a", y: 46 },
+    ];
+    wrapText(card.title, 24, 2).forEach((t, i) =>
+      lines.push({ text: t, font: `bold 40px "Segoe UI", sans-serif`, color: "#ffd76a", y: 102 + i * 46 }),
+    );
+    if (card.article) {
+      wrapText(card.article, 40, 3).forEach((t, i) =>
+        lines.push({ text: t, font: `23px "Segoe UI", sans-serif`, color: "#f5ead6", y: 220 + i * 32 }),
+      );
+    }
+    card.questions?.slice(0, 2).forEach((q, i) => {
+      const [t] = wrapText(q, 38, 1);
+      if (t) lines.push({ text: `• ${t}`, font: `21px "Segoe UI", sans-serif`, color: "#d8cdb8", y: 340 + i * 32 });
+    });
+    lines.push({
+      text: card.embedUrl ? "🔗 點擊查看完整內容與連結" : "🔍 點擊查看完整內容",
+      font: `22px "Segoe UI", sans-serif`,
+      color: "#9fd3ff",
+      y: FEATURED_TEXTURE_H - 30,
+    });
+
+    paintBoard(this.texture, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H, lines);
+  }
+
+  dispose(): void {
+    this.texture.dispose();
+    this.plane.dispose();
+  }
+}
+
+/** Owns all five wall boards (3 topic thumbnails + clock on wallW, the
+ * featured board on wallS) and fans one session update out to each. */
 export class SessionBoards {
   private readonly topics: TopicBoard[];
   private readonly clock: ClockBoard;
+  private readonly featured: FeaturedBoard;
 
   constructor(scene: Scene) {
-    this.topics = [0, 1, 2].map((i) => new TopicBoard(scene, boardZ(i, 4), i + 1));
-    this.clock = new ClockBoard(scene, boardZ(3, 4));
+    const wallWMount = (i: number): WallMount => ({ x: BOARD_X, y: BOARD_Y, z: boardZ(i, 4), rotationY: BOARD_ROTATION_Y });
+    this.topics = [0, 1, 2].map((i) => new TopicBoard(scene, wallWMount(i), i + 1));
+    this.clock = new ClockBoard(scene, wallWMount(3));
+    this.featured = new FeaturedBoard(scene);
   }
 
   update(session: SessionState | null, clockOffsetMs: number, nowMs: number): void {
     for (let i = 0; i < this.topics.length; i++) this.topics[i].update(session?.topics?.[i]);
     this.clock.update(session, clockOffsetMs, nowMs);
+    const featuredIndex = session?.featuredTopic ?? 0;
+    this.featured.update(featuredIndex > 0 ? session?.topics?.[featuredIndex - 1] : undefined);
   }
 
   /** Maps a picked mesh's name back to which topic board it is, or null if
@@ -223,8 +322,14 @@ export class SessionBoards {
     return i === -1 ? null : i;
   }
 
+  /** True if `meshName` is the big featured board on wallS. */
+  isFeaturedBoardMesh(meshName: string): boolean {
+    return this.featured.meshName === meshName;
+  }
+
   dispose(): void {
     for (const t of this.topics) t.dispose();
     this.clock.dispose();
+    this.featured.dispose();
   }
 }
