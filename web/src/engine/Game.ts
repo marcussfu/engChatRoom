@@ -12,8 +12,9 @@ import { Net, resolveRealtimeUrl, type ConnStatus } from "../net/socket";
 import { fetchLiveKitToken } from "../net/tokenClient";
 import type { Anim, ChatMsg, EmoteKind, PlayerStatus, SessionState, TopicCard } from "../net/types";
 import { CameraRig } from "./cameraRig";
-import { buildEnvironment, type SeatMarker, type ZoneMarker } from "./environment";
+import { buildEnvironment, ROOM_HALF_X, ROOM_HALF_Z, type SeatMarker, type ZoneMarker } from "./environment";
 import { LocalPlayer } from "./localPlayer";
+import { buildNavMesh, type NavMesh2D } from "./navmesh";
 import { RemotePlayers } from "./remotePlayers";
 import { rotationTarget } from "./rotation";
 import { SessionBoards } from "./sessionBoards";
@@ -93,6 +94,9 @@ export class Game {
   private readonly sessionBoards: SessionBoards;
   private session: SessionState | null = null;
   private clockOffsetMs = 0;
+  /** Null until the async bake finishes; click-to-move falls back to a
+   * direct walk until then (see moveTo). */
+  private navMesh: NavMesh2D | null = null;
 
   private activityUntil = 0;
   private lastSendAt = 0;
@@ -122,6 +126,15 @@ export class Game {
     this.sessionBoards = new SessionBoards(this.scene);
     this.zones = env.zones;
     this.tableCount = env.tables.length;
+    // Baking is async (WASM); click-to-move works immediately via the
+    // straight-line fallback in moveTo() and switches to real pathing once
+    // this resolves.
+    void buildNavMesh(
+      { minX: -ROOM_HALF_X + 0.5, maxX: ROOM_HALF_X - 0.5, minZ: -ROOM_HALF_Z + 0.5, maxZ: ROOM_HALF_Z - 0.5 },
+      env.tables,
+    ).then((nav) => {
+      this.navMesh = nav;
+    });
     for (const seat of env.seats) {
       this.seatByMesh.set(`seat${seat.id}`, seat);
       this.seatById.set(seat.id, seat);
@@ -440,7 +453,16 @@ export class Game {
       return;
     }
     if (this.remotes.occupiedSeats().has(seat.id)) return;
-    this.local.walkToSeat(seat);
+    this.moveTo(seat.x, seat.z, seat);
+  }
+
+  /** Route the local player to (x, z) around tables via the navmesh, or walk
+   * there directly if it hasn't finished baking yet (or failed) — either way
+   * LocalPlayer just follows whatever waypoints it's given. `seat` carries
+   * through so arrival snaps into that seat's pose. */
+  private moveTo(x: number, z: number, seat: SeatMarker | null = null): void {
+    const path = this.navMesh?.findPath({ x: this.local.x, z: this.local.z }, { x, z }) ?? [{ x, z }];
+    this.local.setPath(path, seat);
   }
 
   private bump(): void {
@@ -501,7 +523,7 @@ export class Game {
           this.local.standUp();
           this.forceSend = true;
         } else {
-          this.local.setMoveTarget(pick.pickedPoint);
+          this.moveTo(pick.pickedPoint.x, pick.pickedPoint.z);
         }
         this.bump();
       }

@@ -232,10 +232,24 @@
 >   **同日再續**：使用者實測後回報「黑色椅子在上」，問清楚是要對調成白色在上——兩個顏色互換
 >   `dx` 值即可（`anchor`/白椅改拿 `+0.95`、`rotator`/黑椅改拿 `-0.95`），朝向公式是算 `dx`
 >   正負推的，自動跟著對；桌號/id 不受影響。全綠：web 四項。**沒瀏覽器實測**。
->   **收工檢查點（2026-10-01，再續）**：待 push。
->   **下次接續**：(1) 請使用者瀏覽器測新的桌椅排列＋椅子朝向＋顏色對調（空間感/走道寬度/是否
->   卡人/椅子方向跟顏色擺放看起來對不對）；(2) 沒問題再回頭做 navmesh；(3) 語音/視訊瀏覽器
->   驗收清單仍等能測麥克風/鏡頭的環境。
+>   **收工檢查點（2026-10-01，再續）**：`e4c5770` 已 push。
+> - 2026-10-01（再續）：使用者說「那接著進度做吧」，直接進到 **navmesh**（Phase 2 最後一項未
+>   動工的）。動工前先查證 `RecastJSPlugin`/`recast-detour` 的現況，發現官方現在都改推
+>   `recast-navigation`（純 npm + WASM，`RecastJSPlugin` 舊式 `<script>` 全域載入法已經過時、
+>   跟 Vite 不搭）；改用這個套件，**沒有經過 Babylon 自己的 RecastJSPlugin**。合成地板幾何
+>   （不從 render mesh 抽頂點，避免 world matrix/纏繞方向這些沒辦法肉眼驗證的坑）+ 寫了會真的
+>   執行 WASM 烘焙/查詢的 vitest 測試（不是 mock，直接驗證繞過桌子的路徑算得出來）；`Game.ts`/
+>   `localPlayer.ts` 改成 waypoint 路徑追隨，navmesh 沒就緒時退化成原本直線走法保底。細節/
+>   已知風險見下方「Phase 2 現況（2026-10-01）」。全綠：web `typecheck`/`lint`/
+>   `vitest(25，新增 4 個)`/`build`（確認這個 WASM 依賴真的能被 Vite 打包，這是原本點名的
+>   最大風險）；另外手動啟動一次 `vite dev` 確認不跟使用者本來開著的 dev server 衝突、能乾淨
+>   啟動。**瀏覽器實際的走路觀感、dev server 載入 WASM 的行為完全沒驗證過**。
+>   **收工檢查點（2026-10-01，三續）**：待 push。
+>   **下次接續**：(1) 請使用者瀏覽器測 navmesh（`pnpm dev` 可能需要重啟一次讓新依賴生效，
+>   Vite 偵測到 `vite.config.ts` 改動通常會自動重啟；點地板走到桌子後面看會不會繞路、會不會卡住、
+>   繞路看起來順不順）；(2) 連同這幾天的桌椅排列/顏色一起測掉；(3) 語音/視訊瀏覽器驗收清單仍等
+>   能測麥克風/鏡頭的環境。Phase 2 清單到這裡全部動工完畢，下一步可以考慮進 Phase 3 或先把
+>   這幾個新功能的瀏覽器回饋收斂完。
 
 ## Context（為什麼做這個）
 
@@ -336,7 +350,7 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 |---|---|---|---|
 | UI | React + Vite + TS | Next.js | App 不需 SSR，Vite 快 |
 | 3D 引擎 | **Babylon.js**（imperative，不用 react-babylonjs） | Three.js + react-three-fiber、PlayCanvas | 對齊 SpotVirtual；內建 navmesh、Inspector、render-on-demand、TS 原生 |
-| 尋路/導航 | Babylon `RecastJSPlugin`（navmesh） | 自刻 A* grid | 引擎內建 |
+| 尋路/導航 | `recast-navigation`（npm，WASM）+ 自合成地板幾何 | Babylon `RecastJSPlugin`、自刻 A* grid | `RecastJSPlugin` 預期用 `<script>` 載入全域 `Recast()`，跟 Vite ESM 打包不搭（2026-10-01 查證，見「Phase 2 現況」） |
 | 碰撞 | ellipsoid + `checkCollisions`（或限制在 navmesh 內） | 完整物理引擎 | MVP 不需物理 |
 | 空間音訊 | Babylon `Sound` spatial（Web Audio PannerNode）或手動 gain | LiveKit spatial-audio 範例 | 與 3D 座標整合 |
 | 媒體 SFU | **LiveKit Cloud** | Daily / Agora / 100ms；自架 LiveKit | managed TURN + 擴縮，有 Go server SDK |
@@ -641,7 +655,8 @@ low-poly 3D 模型（椅子、桌子、雪人、樹、房間結構有體積與�
 - ~~多房間 + Reception/中庭 + 側邊欄（Spaces/Channels/Guests、房間人數）、org/space/room 路由。~~
   **2026-09-21 決定暫不做**：使用者說「就這一間房間，空間增大一點就好，目前不需要多房間」——
   改成把 Cafe 放大（22×16 → 28×20），Reception/側邊欄/org-space-room 路由整包延後，需要時再議。
-- navmesh 尋路（`RecastJSPlugin`）取代簡易移動；攝影機遇牆淡出。
+- ~~navmesh 尋路（`RecastJSPlugin`）取代簡易移動~~ ← ✅ **2026-10-01 完成**，改用 `recast-navigation`
+  而非 `RecastJSPlugin`（見「Phase 2 現況」）。攝影機遇牆淡出仍未做。
 - 牆面嵌入：圖片 / 網頁 / YouTube / 白板（tldraw 或 Excalidraw）/ 計時器 widget。
 - 狀態（In a meeting / Focus time…）、emote / 舉手。← ✅ **程式碼完成（2026-09-23）**，見下方
   「Phase 2 現況」。
@@ -855,6 +870,63 @@ README 同步更新用語。前端 typecheck/lint/vitest 全綠（`rotation.test
    提示，就是安靜地少一截內容，只能等燈箱打開才發現。
 4. 縮圖跟燈箱都還是純文字排版，沒有插圖/圖示（跟房間其他家具一樣的佔位品質）。
 
+#### Phase 2 現況（2026-10-01）—— navmesh 尋路
+
+Phase 2 清單裡最後一個未動工的項目。原計畫寫的是 Babylon 內建 `RecastJSPlugin`，但動工前先查證發現
+`RecastJSPlugin` 預期用 `<script>` 標籤載入一個全域 `Recast()` 函式，這種模式跟 Vite 的 ESM 打包
+方式不搭；查到現在的標準做法是直接用 `recast-navigation`（純 npm 套件，`await init()` 即可，
+WASM 用 ESM import，社群已不再維護舊的 `recast-detour` 寫法），所以改用這個，**沒有用 Babylon
+自己的 `RecastJSPlugin` 包裝層**。
+
+**已完成**：
+- 新增依賴 `recast-navigation`（實際裝到 `^0.43.1`），`vite.config.ts` 加
+  `optimizeDeps: { exclude: ["recast-navigation"] }`（官方文件要求，WASM 套件不給 esbuild
+  預先打包）。
+- 新檔 `engine/navmesh.ts`：故意不從渲染中的 Babylon mesh 抽頂點資料來烘焙 navmesh（會牽扯
+  world matrix、三角形纏繞方向等更多沒辦法用肉眼驗證的坑），改成**純用遊戲已知資料（房間邊界
+  + 每張桌子的 keep-out 圓）合成一塊網格地板**：固定網格解析度（0.5m），桌子範圍內的格子直接
+  不產生三角形，等於地板本身就有洞——不依賴 Recast 自己的高度/坡度過濾機制去「猜」哪裡該排除，
+  由程式碼保證桌子底下一定沒有可走的三角形。`buildNavMesh()` 把這塊地板丟給
+  `generateSoloNavMesh()`，`walkableRadius`/`walkableHeight`/`walkableClimb` 這幾個參數要注意
+  **單位是體素（voxel）不是公尺**，要用 `cs`/`ch`（Recast 的體素尺寸）換算（已查證
+  `@recast-navigation/core` 的 `recast.d.ts` 原始碼確認這點，不是用猜的）。
+- **真的烘焙+查詢測試**（`navmesh.test.ts`，4 個測試）：不是 mock，是在 vitest（Node 環境）裡
+  真的呼叫 `init()` + `generateSoloNavMesh()` + `NavMeshQuery.computePath()`，用跟遊戲裡一樣的
+  房間邊界+16張桌子座標，驗證(a) 地板幾何格式正確、(b) 桌子格子真的被排除、(c) 開放地板上兩點
+  能算出直線路徑、(d) **故意選一條會直接穿過桌子的起訖點，驗證真的會繞路**（path 長度 > 2，
+  代表算出中繼點）。這是這個專案目前唯一一個完全繞過瀏覽器、直接在自動化測試裡驗證「這個功能
+  實際運作」的案例——三角形纏繞方向（recast 要求逆時針，Babylon 是左手座標系，兩者手性不同，
+  原本擔心弄反會很難查）如果弄反，理論上地板法線全部朝下，`generateSoloNavMesh` 應該會直接回報
+  失敗或烘焙出空地圖，而不是「看起來對但其實微妙地錯」——測試確實一次就過，等於間接驗證了纏繞
+  方向是對的。
+- `engine/localPlayer.ts`：原本的單點 `target` 改成 `path: Vector3[]` waypoint 佇列，
+  `setMoveTarget`/`walkToSeat` 合併成一個 `setPath(points, seat?)`；`update()` 走到一個
+  waypoint 就接著處理下一個（同一幀接力，不會每個轉角頓一下）。既有的 `resolveCollisions`
+  圓形 keep-out push-out 完全沒動——WASD 鍵盤移動不走 navmesh（navmesh 只接管點地板/點椅子的
+  click-to-move），所以還是需要這層保底；navmesh 算出的路徑本來就已經避開桌子，所以兩套機制
+  疊加不會打架。
+- `engine/Game.ts`：建構時非同步烘焙 navmesh（`buildEnvironment()` 拿到的 `env.tables` 直接
+  丟進去），**烘焙完成前點地板一樣能走**——`moveTo()` helper 裡 `this.navMesh?.findPath(...) ??
+  [{x,z}]`，navmesh 還沒就緒或烘焙失敗都會退化成原本的直線走法，不會讓 click-to-move 整個失效。
+  點椅子（`trySit`）也改走同一個 `moveTo()`。
+- 全綠：web `typecheck`/`lint`/`vitest(25，新增 4 個)`/`build`（確認 Vite **production build
+  真的能把這個 WASM 依賴打包進去**，生出一個獨立的 700KB 左右的 chunk，這是文件裡原本點名要先
+  確認的風險）；另外手動啟動一次 `vite dev`（不同埠，確認沒跟使用者原本開著的 dev server
+  衝突），確認 dev server 本身能乾淨啟動不報錯。
+
+**已知限制 / 仍待瀏覽器驗證**
+1. **自動化測試只覆蓋到 Node 環境裡的 WASM 載入+烘焙+查詢邏輯本身**，真正在瀏覽器分頁裡透過
+   Vite 的 dev server／production bundle 載入這個 WASM chunk 會不會有問題（例如 CORS、MIME
+   type、`optimizeDeps.exclude` 在 dev 模式下實際生效的行為），完全沒驗證過——這是目前唯一
+   還沒被自動化測試覆蓋到的風險。
+2. 走路的「觀感」完全沒試過：繞過桌子的路線順不順、會不會卡在桌子之間的窄縫（目前桌子間走道
+   淨空約 1.6m，agent 半徑 0.32m+erosion margin，理論上夠走，但沒有肉眼確認過）、轉角會不會因為
+   「同一幀接力到下一個 waypoint」而顯得生硬。
+3. `generateSoloNavMesh` 的烘焙參數（`cs`/`ch`=0.2、各種 walkable 參數）全部是查官方預設值+手算
+   voxel 轉換，沒有為這個場景的實際大小調過——如果走起來感覺怪，這些是第一個該檢查的地方。
+4. 合成地板網格解析度固定 0.5m，桌子的圓形 keep-out 用方格近似，實際排除的形狀不是正圓（會比
+   實際圓形稍大一點點，偏安全的方向，但也代表走道可能比看起來的窄一點點）。
+
 ### Phase 3 — 擴增 + 進階 AI + 打磨
 - Interest management（grid / octree，只送附近實體）；Redis/NATS pub/sub、多實例、依 room sharding。
 - 效能：instancing / LOD / 貼圖 atlas；同時播放的視訊平面上限、離畫面暫停；glb 壓縮調校。
@@ -899,7 +971,7 @@ engChatRoom/
 |---|---|
 | 3D 載入時間 | glb 用 Draco/meshopt 壓縮、貼圖 KTX2；場景切塊漸進載入；共用材質 |
 | render-on-demand 與動畫衝突 | 有 avatar 在移動/播動作時才跑 render loop，idle 全體時凍結 |
-| navmesh / 碰撞 | Babylon `RecastJSPlugin` 產 navmesh；MVP 先用地板 raycast + ellipsoid |
+| navmesh / 碰撞 | `recast-navigation`（自合成地板幾何）產 navmesh，2026-10-01 完成；碰撞仍是簡單的圓形 keep-out push-out，不是完整物理 |
 | 攝影機被牆擋住 | 攝影機碰撞回收，或射線命中的牆面材質轉半透明 |
 | 視訊貼圖效能 | 同時顯示的 video 平面設上限、離畫面/離太遠暫停解碼；遠處只收音訊 |
 | 頻寬 O(N²) | LiveKit 選擇性訂閱 + simulcast + 每 room 人數上限（MVP ~15） |

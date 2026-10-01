@@ -12,4 +12,9 @@ export default defineConfig({
     target: "es2021",
     sourcemap: true,
   },
+  // recast-navigation ships a WASM module; Vite's dependency pre-bundling
+  // (esbuild) doesn't handle that well, so it needs to be excluded.
+  optimizeDeps: {
+    exclude: ["recast-navigation"],
+  },
 });

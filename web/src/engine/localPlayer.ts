@@ -18,12 +18,15 @@ export class LocalPlayer {
   readonly root: ReturnType<typeof createAvatar>;
 
   private readonly keys = new Set<string>();
-  private target: Vector3 | null = null;
+  /** Remaining waypoints to walk through, in order — a direct click-to-move
+   * target is just a one-element path; a navmesh route (see Game.ts's
+   * moveTo) is however many waypoints Recast/Detour returned. */
+  private path: Vector3[] = [];
   private yaw = 0;
   private anim: Anim = "idle";
   private bodyVisible = true;
   private seat: SeatMarker | null = null;
-  /** Seat we're currently walking toward — set the pose once `target` arrives. */
+  /** Seat we're walking toward — set the pose once the whole path arrives. */
   private pendingSeat: SeatMarker | null = null;
 
   constructor(
@@ -61,7 +64,7 @@ export class LocalPlayer {
   setKey(code: string, down: boolean): void {
     if (down) {
       this.keys.add(code);
-      this.target = null; // keyboard cancels click-to-move
+      this.path = []; // keyboard cancels click-to-move
       this.pendingSeat = null;
     } else {
       this.keys.delete(code);
@@ -72,17 +75,14 @@ export class LocalPlayer {
     this.keys.clear();
   }
 
-  setMoveTarget(point: Vector3 | null): void {
-    this.pendingSeat = null;
-    this.target = point ? new Vector3(point.x, 0, point.z) : null;
-  }
-
-  /** Walk to `seat` like any other click-to-move destination; once we arrive,
-   * `update()` snaps position/yaw onto the anchor and locks movement input
-   * until `standUp()`. */
-  walkToSeat(seat: SeatMarker): void {
+  /** Replace the current route with a new one — a single point for a direct
+   * walk (no navmesh yet, or Game.ts chose not to path it), or a full set of
+   * waypoints from a navmesh query. An empty array stops movement. `seat` is
+   * set only when this route ends at a seat, so arrival snaps into its pose
+   * (see finishSit) rather than just stopping. */
+  setPath(points: { x: number; z: number }[], seat: SeatMarker | null = null): void {
+    this.path = points.map((p) => new Vector3(p.x, 0, p.z));
     this.pendingSeat = seat;
-    this.target = new Vector3(seat.x, 0, seat.z);
   }
 
   standUp(): void {
@@ -128,15 +128,23 @@ export class LocalPlayer {
 
     if (usingKeys) {
       move.normalize();
-    } else if (this.target) {
-      const to = this.target.subtract(this.root.position);
+    } else if (this.path.length > 0) {
+      const to = this.path[0].subtract(this.root.position);
       to.y = 0;
       if (to.length() <= ARRIVE_EPS) {
-        this.target = null;
-        move = Vector3.Zero();
-        if (this.pendingSeat) {
-          this.finishSit(this.pendingSeat);
-          this.pendingSeat = null;
+        this.path.shift();
+        if (this.path.length > 0) {
+          // Carry straight into the next waypoint this same frame instead of
+          // losing a frame to idle at every corner of the route.
+          const next = this.path[0].subtract(this.root.position);
+          next.y = 0;
+          move = next.lengthSquared() > 1e-6 ? next.normalize() : Vector3.Zero();
+        } else {
+          move = Vector3.Zero();
+          if (this.pendingSeat) {
+            this.finishSit(this.pendingSeat);
+            this.pendingSeat = null;
+          }
         }
       } else {
         move = to.normalize();
