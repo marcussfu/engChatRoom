@@ -150,8 +150,8 @@ export function buildEnvironment(scene: Scene): Environment {
       // one "anchor" (white) and one "rotator" (black) seat per table, ±X
       // (face to face across the table), each facing the table centre.
       for (const [dx, mat, role] of [
-        [-0.95, chairMat, "anchor"],
-        [0.95, tableMat, "rotator"],
+        [0.95, chairMat, "anchor"],
+        [-0.95, tableMat, "rotator"],
       ] as const) {
         const id = `${n}${role === "anchor" ? "w" : "b"}`;
         const seat = MeshBuilder.CreateBox(
