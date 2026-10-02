@@ -13,6 +13,9 @@ importers:
       '@babylonjs/core':
         specifier: ^8.6.1
         version: 8.56.2
+      '@babylonjs/procedural-textures':
+        specifier: ^8.6.1
+        version: 8.56.2(@babylonjs/core@8.56.2)
       livekit-client:
         specifier: ^2.22.3
         version: 2.22.3(@types/dom-mediacapture-record@1.0.22)
@@ -144,6 +147,11 @@ packages:
 
   '@babylonjs/core@8.56.2':
     resolution: {integrity: sha512-UShs1pt8tSTLYOoITWclXPNrUZUpuHvB2Ur2L1D+uM8c9qaAYOi9gjkurOkQwIlbPGqwQHWImGEyiyix0mQ1dg==}
+
+  '@babylonjs/procedural-textures@8.56.2':
+    resolution: {integrity: sha512-WbpbN1BVRCZOwdLijjObiq7Cmd4KvqRvnBreHRCLL3KZ4Si869VzCn3H49cUQoq0f/bU8Gu8f0aptvUfXdtNAA==}
+    peerDependencies:
+      '@babylonjs/core': ^8.0.0
 
   '@bufbuild/protobuf@1.10.1':
     resolution: {integrity: sha512-wJ8ReQbHxsAfXhrf9ixl0aYbZorRuOWpBNzm8pL8ftmSxQx/wnJD5Eg861NwJU/czy2VXFIebCeZnZrI9rktIQ==}
@@ -1383,6 +1391,10 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
 
   '@babylonjs/core@8.56.2': {}
+
+  '@babylonjs/procedural-textures@8.56.2(@babylonjs/core@8.56.2)':
+    dependencies:
+      '@babylonjs/core': 8.56.2
 
   '@bufbuild/protobuf@1.10.1': {}
 

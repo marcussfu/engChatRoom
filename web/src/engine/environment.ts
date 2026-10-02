@@ -9,6 +9,7 @@ import {
   Vector3,
   type Scene,
 } from "@babylonjs/core";
+import { BrickProceduralTexture } from "@babylonjs/procedural-textures";
 
 /** Inner walkable rectangle of the Cafe, in world units (centred on origin).
  * The server's spawn point mirrors ROOM_HALF_Z - 2 (realtime/internal/game/client.go
@@ -56,10 +57,10 @@ export interface Environment {
   /** Sofa footprints, approximated as circles — fed to the navmesh as
    * obstacles alongside tables (see Game.ts) so routes don't cut through them. */
   sofas: { x: number; z: number; radius: number }[];
-  /** The broadcast zone (docs/PLAN.md 2026-10-01 feedback, item 6): anyone
-   * standing inside is heard at full volume by the whole room regardless of
-   * distance — see Media.updateProximity. */
-  broadcastZone: { x: number; z: number; radius: number };
+  /** The broadcast zone (docs/PLAN.md 2026-10-01/02 feedback, item 6): an
+   * axis-aligned rectangle; anyone standing inside is heard at full volume by
+   * the whole room regardless of distance — see Media.updateProximity. */
+  broadcastZone: { minX: number; maxX: number; minZ: number; maxZ: number };
 }
 
 /** Zone radius in metres — bigger than a table's seats, smaller than half the
@@ -73,27 +74,36 @@ const ZONE_RADIUS = 1.8;
 // boards on wallW) open for future room features. TABLE_ORIGIN_Z is centred
 // so the gap to wallN and wallS comes out equal regardless of which one
 // "the front wall" turns out to mean.
-const TABLE_ORIGIN_X = -1; // column 0's centre
+const TABLE_ORIGIN_X = -7; // column 0's centre
 const TABLE_GAP_X = 4;
-const TABLE_ORIGIN_Z = -6; // row 0's centre
-const TABLE_GAP_Z = 4;
+const TABLE_ORIGIN_Z = -2; // row 0's centre
+const TABLE_GAP_Z = 3;
 
-// Group-chat sofas (docs/PLAN.md 2026-10-01 feedback, item 5) along wallN —
-// that wall is otherwise bare now that the table grid no longer reaches it.
-// No special zone/audio handling is needed for "sitting together chats
-// together": proximity voice is already purely distance-based (README), and
-// seats 0.8m apart on the same sofa are well within the 3m full-volume
-// radius.
-const SOFA_X = [-7, 7]; // centre of each sofa, along the wall
-const SOFA_Z = -9.3; // close to wallN's inner face
+// Group-chat sofas (docs/PLAN.md 2026-10-01 feedback, item 5; moved to wallW
+// 2026-10-02 per the user's request). Mounted against the same wall as the
+// TOPIC/TIMER boards (sessionBoards.ts), set further into the room than the
+// board plane since a sofa has real depth — no conflict with the boards
+// either way, since those are mounted high up (Y=2.15) while a sofa sits on
+// the floor. The first sofa starts right at the TIMER board's Z position
+// (sessionBoards.ts's boardZ(3, 4) = 6.75 — not imported from there to avoid
+// coupling scene furniture to UI board layout, but keep the two in sync if
+// either changes), the second continues back along the wall toward the other
+// boards. No special zone/audio handling is needed for "sitting together
+// chats together": proximity voice is already purely distance-based
+// (README), and seats 0.8m apart on the same sofa are well within the 3m
+// full-volume radius.
+const SOFA_X = -13; // depth from wallW, shared by every sofa
+const SOFA_Z = [6.75, 3.55, -8]; // each sofa's centre along the wall, starting at the TIMER board
 const SOFA_SEAT_SPACING = 0.8;
 const SOFA_SEATS_PER_SOFA = 3;
 const SOFA_WIDTH = SOFA_SEAT_SPACING * SOFA_SEATS_PER_SOFA + 0.4;
 
-// The broadcast zone (item 6) sits on the floor in the south-east corner, in
-// front of where sessionBoards.ts mounts the host-featured big board on
-// wallS — kept clear of both wallS and the nearest table row (row 3, z=6).
-const BROADCAST_ZONE = { x: 9, z: 8.3, radius: ZONE_RADIUS };
+// The broadcast zone (item 6; moved + reshaped 2026-10-02 per the user's
+// screenshot — a rectangle filling the open west strip by wallW, no longer
+// tied to the south-wall featured board's position). Assumes the table
+// grid's west edge stays left of maxX — re-check this if TABLE_ORIGIN_X moves
+// further west than its current -7.
+const BROADCAST_ZONE = { minX: -7.5, maxX: 4.5, minZ: -10, maxZ: -5 };
 
 /**
  * Phase 0 placeholder "Cafe": floor, two lights with shadows, four walls and a
@@ -129,8 +139,17 @@ export function buildEnvironment(scene: Scene): Environment {
 
   // Walls
   const wallMat = new StandardMaterial("wall", scene);
-  wallMat.diffuseColor = new Color3(0.45, 0.36, 0.3);
-  const wallH = 3.2;
+  // Leave diffuseColor at the StandardMaterial default (white) — it
+  // multiplies with diffuseTexture, so tinting it would darken the brick
+  // texture's own colours instead of letting them show through as-is.
+  const brickTexture = new BrickProceduralTexture("brickTex", 512, scene);
+  brickTexture.numberOfBricksWidth = 24;
+  brickTexture.numberOfBricksHeight = 6;
+  brickTexture.brickColor = new Color3(0.55, 0.32, 0.24);
+  brickTexture.jointColor = new Color3(0.8, 0.76, 0.68);
+  wallMat.diffuseTexture = brickTexture;
+  wallMat.specularColor = new Color3(0.05, 0.05, 0.05);
+  const wallH = 6; // tall enough to mount a big screen on wallN later
   const wallT = 0.3;
   const mkWall = (name: string, w: number, d: number, x: number, z: number) => {
     const m = MeshBuilder.CreateBox(name, { width: w, height: wallH, depth: d }, scene);
@@ -147,6 +166,15 @@ export function buildEnvironment(scene: Scene): Environment {
   mkWall("wallE", wallT, spanZ, ROOM_HALF_X, 0);
 
   // Numbered tables: 4 rows x 4 columns
+  // tableTopMat is the cylinder's own colour; tableMat stays dark separately
+  // because it's also reused for the rotator (black) chair below — changing
+  // one must not change the other.
+  const tableTopMat = new StandardMaterial("tableTop", scene);
+  tableTopMat.diffuseColor = new Color3(1, 1, 1);
+  // Low specular (matches floorMat's approach) — StandardMaterial's default
+  // specular is bright enough that a white diffuse can still read as grey
+  // under the scene's cool hemispheric ground light + directional "sun".
+  tableTopMat.specularColor = new Color3(0.05, 0.05, 0.05);
   const tableMat = new StandardMaterial("table", scene);
   tableMat.diffuseColor = new Color3(0.25, 0.22, 0.2);
   const chairMat = new StandardMaterial("chair", scene);
@@ -156,7 +184,7 @@ export function buildEnvironment(scene: Scene): Environment {
   const seats: SeatMarker[] = [];
   const zones: ZoneMarker[] = [];
   const sofas: Environment["sofas"] = [];
-  const cols = 4;
+  const cols = 5;
   const rows = 4;
   let n = 1;
   for (let r = 0; r < rows; r++) {
@@ -169,7 +197,7 @@ export function buildEnvironment(scene: Scene): Environment {
         { diameter: 1.2, height: 0.75, tessellation: 16 },
         scene,
       );
-      top.material = tableMat;
+      top.material = tableTopMat;
       top.position.set(x, 0.38, z);
       top.receiveShadows = true;
       shadows.addShadowCaster(top);
@@ -192,63 +220,75 @@ export function buildEnvironment(scene: Scene): Environment {
     }
   }
 
-  // Group-chat sofas (see SOFA_* constants above).
+  // Group-chat sofas (see SOFA_* constants above). Mounted against wallW, so
+  // the box dimensions that were {width, depth} = {along the wall, into the
+  // room} on wallN are swapped here — no rotation needed, since an
+  // axis-aligned box just needs the right dimension on the right parameter.
   const sofaMat = new StandardMaterial("sofa", scene);
   sofaMat.diffuseColor = new Color3(0.72, 0.18, 0.18);
-  for (let s = 0; s < SOFA_X.length; s++) {
-    const sofaX = SOFA_X[s];
+  for (let s = 0; s < SOFA_Z.length; s++) {
+    const sofaZ = SOFA_Z[s];
     const pad = MeshBuilder.CreateBox(
       `sofaPad${s}`,
-      { width: SOFA_WIDTH, height: 0.4, depth: 0.8 },
+      { width: 0.8, height: 0.4, depth: SOFA_WIDTH },
       scene,
     );
     pad.material = sofaMat;
-    pad.position.set(sofaX, 0.2, SOFA_Z);
+    pad.position.set(SOFA_X, 0.2, sofaZ);
     pad.receiveShadows = true;
     shadows.addShadowCaster(pad);
 
     const back = MeshBuilder.CreateBox(
       `sofaBack${s}`,
-      { width: SOFA_WIDTH, height: 0.6, depth: 0.15 },
+      { width: 0.15, height: 0.6, depth: SOFA_WIDTH },
       scene,
     );
     back.material = sofaMat;
-    back.position.set(sofaX, 0.5, SOFA_Z - 0.4 - 0.075);
+    // Backrest on the wallW side (more negative X), matching "behind the
+    // person, against the wall" — mirrors the pad-to-backrest offset used on
+    // wallN, just on the other axis.
+    back.position.set(SOFA_X - 0.4 - 0.075, 0.5, sofaZ);
     back.receiveShadows = true;
     shadows.addShadowCaster(back);
 
     for (let i = 0; i < SOFA_SEATS_PER_SOFA; i++) {
-      const seatX = sofaX + (i - (SOFA_SEATS_PER_SOFA - 1) / 2) * SOFA_SEAT_SPACING;
+      const seatZ = sofaZ + (i - (SOFA_SEATS_PER_SOFA - 1) / 2) * SOFA_SEAT_SPACING;
       const id = `sofa${s + 1}-${i}`;
       const marker = MeshBuilder.CreateBox(
         `seat${id}`,
-        { width: SOFA_SEAT_SPACING - 0.1, height: 0.1, depth: 0.7 },
+        { width: 0.7, height: 0.1, depth: SOFA_SEAT_SPACING - 0.1 },
         scene,
       );
       marker.material = sofaMat;
-      marker.position.set(seatX, 0.41, SOFA_Z);
+      marker.position.set(SOFA_X, 0.41, seatZ);
       marker.receiveShadows = true;
       // Same colour as the sofa pad so this click target blends in rather
       // than reading as a separate object — Babylon's picking skips
       // invisible meshes, so it can't just be hidden.
-      seats.push({ id, table: 0, role: "sofa", x: seatX, z: SOFA_Z, yaw: 0 });
+      // yaw = π/2 faces +X (into the room, away from wallW) — see the
+      // forward-vector convention noted on createChair below.
+      seats.push({ id, table: 0, role: "sofa", x: SOFA_X, z: seatZ, yaw: Math.PI / 2 });
     }
 
-    sofas.push({ x: sofaX, z: SOFA_Z, radius: SOFA_WIDTH / 2 + 0.3 });
+    sofas.push({ x: SOFA_X, z: sofaZ, radius: SOFA_WIDTH / 2 + 0.3 });
   }
 
-  // Broadcast zone floor patch.
+  // Broadcast zone floor patch — a rectangle, not a circle, so CreateGround
+  // (already a flat XZ-plane) needs no rotation the way CreateDisc did.
   const broadcastMat = new StandardMaterial("broadcastZone", scene);
   broadcastMat.diffuseColor = new Color3(0.55, 0.25, 0.75);
   broadcastMat.alpha = 0.6;
-  const broadcastDecal = MeshBuilder.CreateDisc(
+  const broadcastDecal = MeshBuilder.CreateGround(
     "broadcastZone",
-    { radius: BROADCAST_ZONE.radius, tessellation: 32 },
+    { width: BROADCAST_ZONE.maxX - BROADCAST_ZONE.minX, height: BROADCAST_ZONE.maxZ - BROADCAST_ZONE.minZ },
     scene,
   );
   broadcastDecal.material = broadcastMat;
-  broadcastDecal.rotation.x = Math.PI / 2; // lie flat on the floor
-  broadcastDecal.position.set(BROADCAST_ZONE.x, 0.02, BROADCAST_ZONE.z); // just above the floor, avoid z-fighting
+  broadcastDecal.position.set(
+    (BROADCAST_ZONE.minX + BROADCAST_ZONE.maxX) / 2,
+    0.02, // just above the floor, avoid z-fighting
+    (BROADCAST_ZONE.minZ + BROADCAST_ZONE.maxZ) / 2,
+  );
   broadcastDecal.isPickable = false;
 
   return { shadows, tables, seats, zones, sofas, broadcastZone: BROADCAST_ZONE };

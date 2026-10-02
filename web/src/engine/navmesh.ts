@@ -16,7 +16,14 @@ import { generateSoloNavMesh } from "recast-navigation/generators";
 // obstacle filtering (whose exact behaviour we have no way to visually
 // verify in this environment -- see docs/PLAN.md's navmesh entry).
 
-const CELL_SIZE = 0.5; // synthetic floor grid resolution, world metres
+// Synthetic floor grid resolution, world metres. A cell is excluded (hole)
+// based on its CENTRE point only, so the approximated hole boundary can
+// wobble by up to half a cell width off the true circle — at the old 0.5m
+// this was wide enough to fully close an already-tight gap between two
+// tables on top of Recast's own walkableRadius erosion below, forcing
+// click-to-move to route around rows it should have been able to cut
+// straight through (reported 2026-10-02). 0.2m keeps that wobble to ~0.1m.
+const CELL_SIZE = 0.2;
 const RECAST_CS = 0.2; // Recast voxel xz cell size, world units
 const RECAST_CH = 0.2; // Recast voxel cell height, world units
 

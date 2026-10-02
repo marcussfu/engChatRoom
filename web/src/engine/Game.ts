@@ -100,7 +100,7 @@ export class Game {
   /** Null until the async bake finishes; click-to-move falls back to a
    * direct walk until then (see moveTo). */
   private navMesh: NavMesh2D | null = null;
-  private readonly broadcastZone: { x: number; z: number; radius: number };
+  private readonly broadcastZone: { minX: number; maxX: number; minZ: number; maxZ: number };
 
   private activityUntil = 0;
   private lastSendAt = 0;
@@ -262,7 +262,7 @@ export class Game {
       this.zoneId = zoneId;
       this.opts.onZone?.(zoneId ?? null);
     }
-    const inBroadcast = this.distanceToBroadcastZone(this.local.x, this.local.z) <= this.broadcastZone.radius;
+    const inBroadcast = this.isInBroadcastZone(this.local.x, this.local.z);
     if (inBroadcast !== this.inBroadcastZone) {
       this.inBroadcastZone = inBroadcast;
       this.opts.onBroadcastZone?.(inBroadcast);
@@ -288,7 +288,7 @@ export class Game {
     const remotePositions = this.remotes.positions();
     const broadcasters = new Set<string>();
     for (const [id, pos] of remotePositions) {
-      if (this.distanceToBroadcastZone(pos.x, pos.z) <= this.broadcastZone.radius) broadcasters.add(id);
+      if (this.isInBroadcastZone(pos.x, pos.z)) broadcasters.add(id);
     }
     this.media.updateProximity(this.local.x, this.local.z, remotePositions, broadcasters);
 
@@ -464,8 +464,9 @@ export class Game {
     return undefined;
   }
 
-  private distanceToBroadcastZone(x: number, z: number): number {
-    return Math.hypot(x - this.broadcastZone.x, z - this.broadcastZone.z);
+  private isInBroadcastZone(x: number, z: number): boolean {
+    const b = this.broadcastZone;
+    return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
   }
 
   /** Stand up if already sitting at `seat`; otherwise walk over to it like any
