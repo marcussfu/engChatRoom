@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, type Scene } from "@babylonjs/core";
+import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, Vector3, type Scene } from "@babylonjs/core";
 import type { SessionState, TopicCard } from "../net/types";
 import { ROOM_HALF_X, ROOM_HALF_Z } from "./environment";
 import { formatClock, remainingMs } from "./rotation";
@@ -6,10 +6,10 @@ import { formatClock, remainingMs } from "./rotation";
 // Wall-mounted boards for the language-exchange session (docs/PLAN.md §一.A
 // "TOPIC 1/2/3" + "TIMER 看板"). Four are mounted along the room's narrow
 // (west) wall in reading order: TOPIC 1, TOPIC 2, TOPIC 3, TIMER. A fifth,
-// bigger board mounts on wallS (2026-10-01 feedback, item 3): the host can
-// "feature" one of TOPIC 1-3 there, so the room has one obvious "what we're
-// discussing" focal point instead of everyone having to walk over and read a
-// thumbnail.
+// bigger screen mounts on wallN (2026-10-01 feedback, item 3; moved there
+// 2026-10-05): the host can "feature" one of TOPIC 1-3 on it, so the room has
+// one obvious "what we're discussing" focal point instead of everyone having
+// to walk over and read a thumbnail.
 //
 // The topic boards are a *fixed* display of the host's first three topics —
 // not the per-round rotation (that's SessionState.topic, already shown on the
@@ -36,14 +36,18 @@ const TIMER_HEIGHT = 1.5;
 const TIMER_TEXTURE_W = 640;
 const TIMER_TEXTURE_H = 400; // matches the plane's 2.4:1.5 aspect
 
-// The featured board sits on wallS, off to one side of spawn, above the
-// broadcast zone (environment.ts's BROADCAST_ZONE) — both are part of the
-// same "stage" corner (2026-10-01 feedback, items 3 and 6).
-const FEATURED_X = 9;
-const FEATURED_WIDTH = 3.4;
-const FEATURED_HEIGHT = 2.1;
-const FEATURED_TEXTURE_W = 816;
-const FEATURED_TEXTURE_H = 504; // matches the plane's 3.4:2.1 aspect
+// The featured "big screen" sits centred on wallN (2026-10-05: moved from
+// wallS and enlarged to a 16:9 screen, since spawn now sits by wallE). Its
+// texture shows the featured TOPIC's title/article/questions; when that TOPIC
+// has an embed link, Game.ts lays a DOM iframe over the plane (WebGL textures
+// can't host a live iframe, so the overlay is positioned by projecting the
+// plane's corners to screen space each frame).
+export const FEATURED_X = 0;
+export const FEATURED_Y = 3;
+export const FEATURED_WIDTH = 7.2;
+export const FEATURED_HEIGHT = 4.05; // 16:9
+const FEATURED_TEXTURE_W = 1280;
+const FEATURED_TEXTURE_H = 720; // matches the plane's 16:9 aspect
 
 interface BoardLine {
   text: string;
@@ -220,17 +224,17 @@ class ClockBoard {
   }
 }
 
-/** The host-featured big board on wallS (item 3): shows one TOPIC's full
- * content (not just a thumbnail) so the room has one obvious shared focal
- * point, without everyone needing to walk over to a TOPIC 1/2/3 thumbnail.
- * Clickable too, opening the same lightbox. */
+/** The host-featured big screen on wallN: shows one TOPIC's content so the
+ * room has one obvious shared focal point. Clickable too, opening the same
+ * lightbox (the lightbox is where the iframe lives when there's no overlay). */
 class FeaturedBoard {
   private readonly plane: Mesh;
   private readonly texture: DynamicTexture;
   private lastKey: string | undefined;
 
   constructor(scene: Scene) {
-    const mount: WallMount = { x: FEATURED_X, y: BOARD_Y, z: ROOM_HALF_Z - 0.18, rotationY: 0 };
+    // rotationY = PI: the readable face points +Z, into the room (same as wallN's other mounts).
+    const mount: WallMount = { x: FEATURED_X, y: FEATURED_Y, z: -ROOM_HALF_Z + 0.18, rotationY: Math.PI };
     const built = makeBoardPlane(scene, mount, FEATURED_WIDTH, FEATURED_HEIGHT, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H);
     this.plane = built.plane;
     this.plane.name = "featuredBoard";
@@ -241,6 +245,19 @@ class FeaturedBoard {
 
   get meshName(): string {
     return this.plane.name;
+  }
+
+  /** The screen's four corners in world space (it's axis-aligned on wallN). */
+  worldCorners(): Vector3[] {
+    const hw = FEATURED_WIDTH / 2;
+    const hh = FEATURED_HEIGHT / 2;
+    const z = -ROOM_HALF_Z + 0.18;
+    return [
+      new Vector3(FEATURED_X - hw, FEATURED_Y - hh, z),
+      new Vector3(FEATURED_X + hw, FEATURED_Y - hh, z),
+      new Vector3(FEATURED_X + hw, FEATURED_Y + hh, z),
+      new Vector3(FEATURED_X - hw, FEATURED_Y + hh, z),
+    ];
   }
 
   /** `card` is undefined until the host features a topic (see
@@ -256,32 +273,32 @@ class FeaturedBoard {
 
     if (!card) {
       paintBoard(this.texture, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H, [
-        { text: "目前討論主題", font: `bold 36px "Segoe UI", sans-serif`, color: "#c8b89a", y: 70 },
-        { text: "（主持人尚未選擇）", font: `30px "Segoe UI", sans-serif`, color: "#9a8b76", y: 260 },
+        { text: "目前討論主題", font: `bold 56px "Segoe UI", sans-serif`, color: "#c8b89a", y: 150 },
+        { text: "（主持人尚未選擇）", font: `46px "Segoe UI", sans-serif`, color: "#9a8b76", y: 380 },
       ]);
       return;
     }
 
     const lines: BoardLine[] = [
-      { text: "目前討論主題", font: `bold 30px "Segoe UI", sans-serif`, color: "#c8b89a", y: 46 },
+      { text: "目前討論主題", font: `bold 46px "Segoe UI", sans-serif`, color: "#c8b89a", y: 72 },
     ];
-    wrapText(card.title, 24, 2).forEach((t, i) =>
-      lines.push({ text: t, font: `bold 40px "Segoe UI", sans-serif`, color: "#ffd76a", y: 102 + i * 46 }),
+    wrapText(card.title, 36, 2).forEach((t, i) =>
+      lines.push({ text: t, font: `bold 62px "Segoe UI", sans-serif`, color: "#ffd76a", y: 160 + i * 70 }),
     );
     if (card.article) {
-      wrapText(card.article, 40, 3).forEach((t, i) =>
-        lines.push({ text: t, font: `23px "Segoe UI", sans-serif`, color: "#f5ead6", y: 220 + i * 32 }),
+      wrapText(card.article, 60, 3).forEach((t, i) =>
+        lines.push({ text: t, font: `36px "Segoe UI", sans-serif`, color: "#f5ead6", y: 340 + i * 50 }),
       );
     }
     card.questions?.slice(0, 2).forEach((q, i) => {
-      const [t] = wrapText(q, 38, 1);
-      if (t) lines.push({ text: `• ${t}`, font: `21px "Segoe UI", sans-serif`, color: "#d8cdb8", y: 340 + i * 32 });
+      const [t] = wrapText(q, 58, 1);
+      if (t) lines.push({ text: `• ${t}`, font: `32px "Segoe UI", sans-serif`, color: "#d8cdb8", y: 530 + i * 46 });
     });
     lines.push({
       text: card.embedUrl ? "🔗 點擊查看完整內容與連結" : "🔍 點擊查看完整內容",
-      font: `22px "Segoe UI", sans-serif`,
+      font: `34px "Segoe UI", sans-serif`,
       color: "#9fd3ff",
-      y: FEATURED_TEXTURE_H - 30,
+      y: FEATURED_TEXTURE_H - 40,
     });
 
     paintBoard(this.texture, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H, lines);
@@ -294,7 +311,7 @@ class FeaturedBoard {
 }
 
 /** Owns all five wall boards (3 topic thumbnails + clock on wallW, the
- * featured board on wallS) and fans one session update out to each. */
+ * featured big screen on wallN) and fans one session update out to each. */
 export class SessionBoards {
   private readonly topics: TopicBoard[];
   private readonly clock: ClockBoard;
@@ -322,9 +339,14 @@ export class SessionBoards {
     return i === -1 ? null : i;
   }
 
-  /** True if `meshName` is the big featured board on wallS. */
+  /** True if `meshName` is the big featured screen on wallN. */
   isFeaturedBoardMesh(meshName: string): boolean {
     return this.featured.meshName === meshName;
+  }
+
+  /** World-space corners of the featured screen, for laying the iframe overlay over it. */
+  featuredScreenCorners(): Vector3[] {
+    return this.featured.worldCorners();
   }
 
   dispose(): void {

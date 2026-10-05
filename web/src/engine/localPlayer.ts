@@ -36,8 +36,8 @@ export class LocalPlayer {
     shadows?: ShadowGenerator,
   ) {
     this.root = createAvatar(scene, color, shadows);
-    this.root.position.set(0, 0, ROOM_HALF_Z - 2);
-    this.yaw = Math.PI; // face into the room
+    this.root.position.set(ROOM_HALF_X - 2, 0, 0);
+    this.yaw = -Math.PI / 2; // face west, into the room from the east wall
     this.root.rotation.y = this.yaw;
   }
 

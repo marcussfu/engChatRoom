@@ -518,3 +518,31 @@ body,
   font-size: 14px;
   opacity: 0.75;
 }
+
+/* Big-screen embed overlay — positioned from Game.updateScreenOverlay (hidden by default). */
+.screenOverlay {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  background: #000;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.screenOverlay iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.screenOverlay__btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4px 9px;
+  border-radius: 6px;
+}

@@ -11,7 +11,7 @@ interface TopicLightboxProps {
  * iframed (X-Frame-Options/CSP) and there's no generic workaround for that;
  * the iframe just renders blank or an error page for those, which is the
  * browser's own behaviour, not something this app can fix. */
-function toEmbeddableUrl(url: string): string {
+export function toEmbeddableUrl(url: string): string {
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/^www\./, "");

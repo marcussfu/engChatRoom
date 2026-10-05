@@ -10,7 +10,7 @@ import { Hud } from "./ui/Hud";
 import { RoundNotice, type Notice } from "./ui/RoundNotice";
 import { SessionPanel } from "./ui/SessionPanel";
 import { StatusBar } from "./ui/StatusBar";
-import { TopicLightbox } from "./ui/TopicLightbox";
+import { TopicLightbox, toEmbeddableUrl } from "./ui/TopicLightbox";
 
 function guestName(): string {
   const key = "engchatroom.name";
@@ -53,6 +53,8 @@ export function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [hostResult, setHostResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [topicCard, setTopicCard] = useState<TopicCard | null>(null);
+  const [screenEmbed, setScreenEmbed] = useState<string | null>(null);
+  const screenOverlayRef = useRef<HTMLDivElement>(null);
 
   const showNotice = useCallback((n: Notice) => {
     setNotice(n);
@@ -100,6 +102,7 @@ export function App() {
       },
       onHostResult: (ok, error) => setHostResult({ ok, error }),
       onTopicBoardClick: setTopicCard,
+      onFeaturedEmbed: setScreenEmbed,
       onChat: (msg) => {
         setMessages((prev) =>
           [
@@ -110,6 +113,7 @@ export function App() {
       },
     });
     gameRef.current = game;
+    game.bindScreenOverlay(screenOverlayRef.current);
 
     return () => {
       window.clearTimeout(noticeTimerRef.current);
@@ -121,6 +125,27 @@ export function App() {
   return (
     <>
       <canvas id="scene" ref={canvasRef} />
+      <div ref={screenOverlayRef} className="screenOverlay">
+        {screenEmbed && (
+          <iframe
+            src={toEmbeddableUrl(screenEmbed)}
+            title="大螢幕內容"
+            allow="autoplay; encrypted-media; picture-in-picture"
+            allowFullScreen
+          />
+        )}
+        {session?.featuredTopic ? (
+          <button
+            className="screenOverlay__btn"
+            onClick={() => {
+              const card = session.topics?.[session.featuredTopic - 1];
+              if (card) setTopicCard(card);
+            }}
+          >
+            🔍 內容
+          </button>
+        ) : null}
+      </div>
       <Hud
         status={status}
         online={online}

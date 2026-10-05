@@ -2,7 +2,9 @@ import {
   Engine,
   PointerEventTypes,
   Scene,
+  Matrix,
   Vector3,
+  Viewport,
   type PointerInfo,
 } from "@babylonjs/core";
 import "@babylonjs/core/Culling/ray"; // enables scene.pick for click-to-move
@@ -54,6 +56,9 @@ export interface GameOptions {
   /** Fires when the local player enters/leaves the broadcast zone (docs/PLAN.md
    * 2026-10-01 feedback, item 6) — standing there is heard room-wide. */
   onBroadcastZone?: (on: boolean) => void;
+  /** The featured big screen's embed link changed (null = none). App renders
+   * the iframe overlay itself; Game only positions it (see bindScreenOverlay). */
+  onFeaturedEmbed?: (url: string | null) => void;
   onChat?: (msg: ChatMsg) => void;
   /** Fires once, when the server assigns our connection id. */
   onSelfId?: (id: string) => void;
@@ -107,6 +112,9 @@ export class Game {
   private lastSentAnim: Anim = "idle";
   private zoneId: string | undefined;
   private inBroadcastZone = false;
+  private screenOverlay: HTMLElement | null = null;
+  private screenEmbedUrl: string | null = null;
+  private readonly canvas: HTMLCanvasElement;
   private status: PlayerStatus = DEFAULT_STATUS;
   private raisedHand = false;
   private selfId = "";
@@ -116,6 +124,7 @@ export class Game {
 
   constructor(canvas: HTMLCanvasElement, opts: GameOptions) {
     this.opts = opts;
+    this.canvas = canvas;
     this.engine = new Engine(canvas, true, {
       antialias: true,
       stencil: true,
@@ -293,6 +302,8 @@ export class Game {
     this.media.updateProximity(this.local.x, this.local.z, remotePositions, broadcasters);
 
     this.sessionBoards.update(this.session, this.clockOffsetMs, Date.now());
+    this.syncFeaturedEmbed();
+    this.updateScreenOverlay();
     // A running round's countdown needs to keep visibly ticking even when
     // nobody's moving and the camera is still — treat it like remote
     // interpolation and keep the render-on-demand window open for as long as
@@ -462,6 +473,59 @@ export class Game {
       if (dx * dx + dz * dz <= zone.radius * zone.radius) return zone.id;
     }
     return undefined;
+  }
+
+  /** Hands the React layer the DOM element that should show the featured
+   * screen's embed (App renders the iframe inside it; Game positions it). */
+  bindScreenOverlay(el: HTMLElement | null): void {
+    this.screenOverlay = el;
+  }
+
+  /** Emits onFeaturedEmbed whenever the featured TOPIC's embed link changes. */
+  private syncFeaturedEmbed(): void {
+    const idx = this.session?.featuredTopic ?? 0;
+    const url = idx > 0 ? (this.session?.topics?.[idx - 1]?.embedUrl ?? null) : null;
+    if (url !== this.screenEmbedUrl) {
+      this.screenEmbedUrl = url;
+      this.opts.onFeaturedEmbed?.(url);
+    }
+  }
+
+  /** Lays the overlay over the featured screen: projects the plane's four
+   * world corners to canvas pixels and uses their bounding box. Perspective
+   * skew is ignored (the box isn't warped to the quad), which is fine for a
+   * screen seen mostly head-on; hidden when the camera is behind the wall. */
+  private updateScreenOverlay(): void {
+    const el = this.screenOverlay;
+    if (!el) return;
+    const cam = this.scene.activeCamera;
+    const hide = () => {
+      el.style.display = "none";
+    };
+    if (!cam || !this.screenEmbedUrl || cam.position.z < -ROOM_HALF_Z + 0.18) {
+      hide();
+      return;
+    }
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    const viewport = new Viewport(0, 0, w, h);
+    const transform = this.scene.getTransformMatrix();
+    const pts = this.sessionBoards
+      .featuredScreenCorners()
+      .map((c) => Vector3.Project(c, Matrix.Identity(), transform, viewport));
+    if (pts.some((p) => p.z < 0 || p.z > 1)) {
+      hide();
+      return;
+    }
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    el.style.display = "block";
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.width = `${Math.max(...xs) - left}px`;
+    el.style.height = `${Math.max(...ys) - top}px`;
   }
 
   private isInBroadcastZone(x: number, z: number): boolean {

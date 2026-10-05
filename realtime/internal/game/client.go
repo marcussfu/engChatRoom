@@ -16,12 +16,14 @@ const (
 	sendQueue      = 16      // dropped-frame tolerant: snapshots are idempotent
 	writeTimeout   = 5 * time.Second
 
-	// spawnZ mirrors the web client's spawn (web/src/engine/localPlayer.ts:
-	// z = ROOM_HALF_Z - 2). The client also sends its real position on connect,
-	// so this only covers the one tick between join and that first input — and
-	// any future non-web client. Replace with server-assigned spawn points when
-	// scene definitions land (docs/PLAN.md §一.A "spawn points").
-	spawnZ = 8
+	// spawnX/spawnZ mirror the web client's spawn (web/src/engine/localPlayer.ts:
+	// x = ROOM_HALF_X - 2, z = 0 — by the east wall). The client also sends its
+	// real position on connect, so this only covers the one tick between join
+	// and that first input — and any future non-web client. Replace with
+	// server-assigned spawn points when scene definitions land (docs/PLAN.md
+	// §一.A "spawn points").
+	spawnX = 12
+	spawnZ = 0
 )
 
 // Client is one connected browser. Its state is owned by the Room; the Room's
@@ -65,6 +67,7 @@ func newClient(conn *websocket.Conn, room *Room, id, color string) *Client {
 			Name:  "guest",
 			Anim:  protocol.AnimIdle,
 			Color: color,
+			X:     spawnX,
 			Z:     spawnZ,
 		},
 	}
