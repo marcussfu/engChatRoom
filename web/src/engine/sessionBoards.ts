@@ -138,7 +138,10 @@ function wrapText(s: string, maxChars: number, maxLines: number): string[] {
 class TopicBoard {
   private readonly plane: Mesh;
   private readonly texture: DynamicTexture;
-  private lastKey: string | undefined;
+  // null, not undefined: an undefined initial key matches the first paint(undefined)
+  // and skips it, so the placeholder never reaches the texture and the mesh stays
+  // invisible until the session starts.
+  private lastKey: string | null = null;
 
   constructor(
     scene: Scene,
@@ -164,7 +167,7 @@ class TopicBoard {
   }
 
   private paint(topic: TopicCard | undefined): void {
-    const key = topic?.title;
+    const key = topic?.title ?? "none";
     if (key === this.lastKey) return;
     this.lastKey = key;
 
@@ -224,13 +227,14 @@ class ClockBoard {
   }
 }
 
-/** The host-featured big screen on wallN: shows one TOPIC's content so the
- * room has one obvious shared focal point. Clickable too, opening the same
- * lightbox (the lightbox is where the iframe lives when there's no overlay). */
+/** The host-featured big screen on wallN (2026-10-06): the same look as the
+ * TOPIC thumbnails on wallW, just bigger. Shows whichever TOPIC the host
+ * featured; clickable, opening the lightbox. */
 class FeaturedBoard {
   private readonly plane: Mesh;
   private readonly texture: DynamicTexture;
-  private lastKey: string | undefined;
+  // null (not undefined) so the first paint always runs — see TopicBoard.
+  private lastKey: string | null = null;
 
   constructor(scene: Scene) {
     // rotationY = PI: the readable face points +Z, into the room (same as wallN's other mounts).
@@ -240,7 +244,7 @@ class FeaturedBoard {
     this.plane.name = "featuredBoard";
     this.plane.isPickable = true;
     this.texture = built.texture;
-    this.paint(undefined);
+    this.paint(0, undefined);
   }
 
   get meshName(): string {
@@ -260,45 +264,36 @@ class FeaturedBoard {
     ];
   }
 
-  /** `card` is undefined until the host features a topic (see
-   * Game.hostFeature / SessionState.featuredTopic). */
-  update(card: TopicCard | undefined): void {
-    this.paint(card);
+  /** `index` is the featured TOPIC number (1-3), `card` its content; both
+   * undefined/0 until the host features one (see Game.hostFeature). */
+  update(index: number, card: TopicCard | undefined): void {
+    this.paint(index, card);
   }
 
-  private paint(card: TopicCard | undefined): void {
-    const key = card?.title;
+  private paint(index: number, card: TopicCard | undefined): void {
+    const key = card ? `${index}|${card.title}|${card.embedUrl ?? ""}` : "none";
     if (key === this.lastKey) return;
     this.lastKey = key;
 
     if (!card) {
       paintBoard(this.texture, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H, [
-        { text: "目前討論主題", font: `bold 56px "Segoe UI", sans-serif`, color: "#c8b89a", y: 150 },
-        { text: "（主持人尚未選擇）", font: `46px "Segoe UI", sans-serif`, color: "#9a8b76", y: 380 },
+        { text: "大螢幕", font: `bold 96px "Segoe UI", sans-serif`, color: "#f5ead6", y: 180 },
+        { text: "（主持人尚未選擇話題）", font: `56px "Segoe UI", sans-serif`, color: "#9a8b76", y: 380 },
       ]);
       return;
     }
 
     const lines: BoardLine[] = [
-      { text: "目前討論主題", font: `bold 46px "Segoe UI", sans-serif`, color: "#c8b89a", y: 72 },
+      { text: `TOPIC ${index}`, font: `bold 96px "Segoe UI", sans-serif`, color: "#f5ead6", y: 180 },
     ];
-    wrapText(card.title, 36, 2).forEach((t, i) =>
-      lines.push({ text: t, font: `bold 62px "Segoe UI", sans-serif`, color: "#ffd76a", y: 160 + i * 70 }),
+    wrapText(card.title, 24, 3).forEach((t, i) =>
+      lines.push({ text: t, font: `bold 84px "Segoe UI", sans-serif`, color: "#ffd76a", y: 340 + i * 100 }),
     );
-    if (card.article) {
-      wrapText(card.article, 60, 3).forEach((t, i) =>
-        lines.push({ text: t, font: `36px "Segoe UI", sans-serif`, color: "#f5ead6", y: 340 + i * 50 }),
-      );
-    }
-    card.questions?.slice(0, 2).forEach((q, i) => {
-      const [t] = wrapText(q, 58, 1);
-      if (t) lines.push({ text: `• ${t}`, font: `32px "Segoe UI", sans-serif`, color: "#d8cdb8", y: 530 + i * 46 });
-    });
     lines.push({
-      text: card.embedUrl ? "🔗 點擊查看完整內容與連結" : "🔍 點擊查看完整內容",
-      font: `34px "Segoe UI", sans-serif`,
-      color: "#9fd3ff",
-      y: FEATURED_TEXTURE_H - 40,
+      text: card.embedUrl ? "▶ 播放影片／連結" : "🔍 點擊查看完整內容",
+      font: `52px "Segoe UI", sans-serif`,
+      color: "#c8b89a",
+      y: FEATURED_TEXTURE_H - 60,
     });
 
     paintBoard(this.texture, FEATURED_TEXTURE_W, FEATURED_TEXTURE_H, lines);
@@ -328,7 +323,7 @@ export class SessionBoards {
     for (let i = 0; i < this.topics.length; i++) this.topics[i].update(session?.topics?.[i]);
     this.clock.update(session, clockOffsetMs, nowMs);
     const featuredIndex = session?.featuredTopic ?? 0;
-    this.featured.update(featuredIndex > 0 ? session?.topics?.[featuredIndex - 1] : undefined);
+    this.featured.update(featuredIndex, featuredIndex > 0 ? session?.topics?.[featuredIndex - 1] : undefined);
   }
 
   /** Maps a picked mesh's name back to which topic board it is, or null if
