@@ -527,8 +527,15 @@ export class Game {
    * quad via a CSS matrix3d — so it skews with the wall as the camera moves
    * instead of always facing the camera like a billboard (2026-10-07
    * feedback: the previous axis-aligned-bounding-box version did exactly
-   * that). Hidden when the camera is behind the wall or the screen is
-   * outside the view frustum. */
+   * that). Hidden when the camera is behind the wall, the screen is outside
+   * the view frustum, or (2026-10-07 feedback: the overlay was showing
+   * "through" the wall) something is actually in front of the screen from
+   * the camera's current position -- a ray-pick at the quad's centre must
+   * land on the screen mesh itself, otherwise some nearer geometry (the
+   * wall, most likely) is blocking the real 3D view of it. This is a
+   * best-effort check (centre point only, so partial occlusion by a small
+   * object isn't caught), not full per-pixel depth compositing, which a DOM
+   * overlay can't do. */
   private updateScreenOverlay(): void {
     const el = this.screenOverlay;
     if (!el) return;
@@ -547,6 +554,20 @@ export class Game {
       return;
     }
     const dst = pts.map((p) => ({ x: p.x, y: p.y }));
+    const centerX = (dst[0].x + dst[1].x + dst[2].x + dst[3].x) / 4;
+    const centerY = (dst[0].y + dst[1].y + dst[2].y + dst[3].y) / 4;
+    // scene.pick's (x, y) are in the engine's actual render-buffer pixels,
+    // which can differ from canvas.clientWidth/Height (CSS pixels, used
+    // above for the DOM overlay/viewport) when devicePixelRatio != 1.
+    const engine = this.scene.getEngine();
+    const pickX = (centerX * engine.getRenderWidth()) / this.canvas.clientWidth;
+    const pickY = (centerY * engine.getRenderHeight()) / this.canvas.clientHeight;
+    const pick = this.scene.pick(pickX, pickY);
+    const hitMesh = pick?.hit ? pick.pickedMesh?.name : undefined;
+    if (!hitMesh || !this.sessionBoards.isFeaturedBoardMesh(hitMesh)) {
+      el.style.display = "none";
+      return;
+    }
     const homography = solveHomography(OVERLAY_REF_CORNERS, dst);
     el.style.display = "block";
     el.style.transform = homographyToCssMatrix3d(homography);
