@@ -423,6 +423,11 @@ func parseTopicLine(line string) protocol.TopicCard {
 		if preset, ok := presetByTitle(line); ok {
 			return preset
 		}
+		// A line that is just a link is an embed for an untitled video topic,
+		// not a title — otherwise the URL itself becomes the on-board title.
+		if isEmbeddableURL(line) {
+			return protocol.TopicCard{Title: "影片", EmbedURL: clampRunes(line, maxArticleRunes)}
+		}
 		return protocol.TopicCard{Title: clampRunes(line, maxTitleRunes)}
 	}
 

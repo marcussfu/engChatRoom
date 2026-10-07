@@ -323,3 +323,13 @@ func TestFeatureTopicReflectedInSnapshot(t *testing.T) {
 		t.Fatalf("FeaturedTopic after restart = %d, want reset to 0", got)
 	}
 }
+
+func TestParseTopicLineBareURLBecomesEmbed(t *testing.T) {
+	card := parseTopicLine("https://www.youtube.com/watch?v=abc123")
+	if card.EmbedURL != "https://www.youtube.com/watch?v=abc123" {
+		t.Fatalf("EmbedURL = %q, want the bare link", card.EmbedURL)
+	}
+	if card.Title != "影片" {
+		t.Fatalf("Title = %q, want a placeholder title, not the URL", card.Title)
+	}
+}
