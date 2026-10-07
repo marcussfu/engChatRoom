@@ -15,6 +15,7 @@ import { fetchLiveKitToken } from "../net/tokenClient";
 import type { Anim, ChatMsg, EmoteKind, PlayerStatus, SessionState, TopicCard } from "../net/types";
 import { CameraRig } from "./cameraRig";
 import { buildEnvironment, ROOM_HALF_X, ROOM_HALF_Z, type SeatMarker, type ZoneMarker } from "./environment";
+import { homographyToCssMatrix3d, solveHomography, type Point } from "./homography";
 import { LocalPlayer } from "./localPlayer";
 import { buildNavMesh, type NavMesh2D } from "./navmesh";
 import { RemotePlayers } from "./remotePlayers";
@@ -28,6 +29,20 @@ const MOVE_KEYS = new Set([
 const SEND_INTERVAL_MS = 50;
 const ACTIVITY_WINDOW_MS = 400;
 const HEAD_Y = 1.4;
+
+// The featured-screen embed overlay's own reference rectangle (see
+// updateScreenOverlay / homography.ts) -- any size works as long as it's 16:9
+// to match the screen, and bindScreenOverlay sizes the actual DOM element to
+// match. Corner order mirrors sessionBoards.ts's featuredScreenCorners():
+// bottom-left, bottom-right, top-right, top-left.
+const OVERLAY_BASE_W = 640;
+const OVERLAY_BASE_H = 360;
+const OVERLAY_REF_CORNERS: Point[] = [
+  { x: 0, y: OVERLAY_BASE_H },
+  { x: OVERLAY_BASE_W, y: OVERLAY_BASE_H },
+  { x: OVERLAY_BASE_W, y: 0 },
+  { x: 0, y: 0 },
+];
 
 /** What the UI needs to announce a new round. */
 export interface RoundChangeInfo {
@@ -476,9 +491,20 @@ export class Game {
   }
 
   /** Hands the React layer the DOM element that should show the featured
-   * screen's embed (App renders the iframe inside it; Game positions it). */
+   * screen's embed (App renders the iframe inside it; Game positions it).
+   * Sets a fixed base size/origin once — updateScreenOverlay only ever sets
+   * `transform`, warping from this same rectangle (OVERLAY_REF_CORNERS) each
+   * frame, so the base size and the homography's reference corners must
+   * stay in sync. */
   bindScreenOverlay(el: HTMLElement | null): void {
     this.screenOverlay = el;
+    if (!el) return;
+    el.style.position = "fixed";
+    el.style.left = "0";
+    el.style.top = "0";
+    el.style.width = `${OVERLAY_BASE_W}px`;
+    el.style.height = `${OVERLAY_BASE_H}px`;
+    el.style.transformOrigin = "0 0";
   }
 
   /** Emits onFeaturedEmbed whenever the featured TOPIC's embed link changes. */
@@ -491,41 +517,35 @@ export class Game {
     }
   }
 
-  /** Lays the overlay over the featured screen: projects the plane's four
-   * world corners to canvas pixels and uses their bounding box. Perspective
-   * skew is ignored (the box isn't warped to the quad), which is fine for a
-   * screen seen mostly head-on; hidden when the camera is behind the wall. */
+  /** Lays the overlay over the featured screen by warping it to match: the
+   * plane's four world corners are projected to canvas pixels, then a planar
+   * homography (homography.ts) maps the overlay's own rectangle onto that
+   * quad via a CSS matrix3d — so it skews with the wall as the camera moves
+   * instead of always facing the camera like a billboard (2026-10-07
+   * feedback: the previous axis-aligned-bounding-box version did exactly
+   * that). Hidden when the camera is behind the wall or the screen is
+   * outside the view frustum. */
   private updateScreenOverlay(): void {
     const el = this.screenOverlay;
     if (!el) return;
     const cam = this.scene.activeCamera;
-    const hide = () => {
-      el.style.display = "none";
-    };
     if (!cam || !this.screenEmbedUrl || cam.position.z < -ROOM_HALF_Z + 0.18) {
-      hide();
+      el.style.display = "none";
       return;
     }
-    const w = this.canvas.clientWidth;
-    const h = this.canvas.clientHeight;
-    const viewport = new Viewport(0, 0, w, h);
+    const viewport = new Viewport(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
     const transform = this.scene.getTransformMatrix();
     const pts = this.sessionBoards
       .featuredScreenCorners()
       .map((c) => Vector3.Project(c, Matrix.Identity(), transform, viewport));
     if (pts.some((p) => p.z < 0 || p.z > 1)) {
-      hide();
+      el.style.display = "none";
       return;
     }
-    const xs = pts.map((p) => p.x);
-    const ys = pts.map((p) => p.y);
-    const left = Math.min(...xs);
-    const top = Math.min(...ys);
+    const dst = pts.map((p) => ({ x: p.x, y: p.y }));
+    const homography = solveHomography(OVERLAY_REF_CORNERS, dst);
     el.style.display = "block";
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-    el.style.width = `${Math.max(...xs) - left}px`;
-    el.style.height = `${Math.max(...ys) - top}px`;
+    el.style.transform = homographyToCssMatrix3d(homography);
   }
 
   private isInBroadcastZone(x: number, z: number): boolean {
