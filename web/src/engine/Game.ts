@@ -34,14 +34,18 @@ const HEAD_Y = 1.4;
 // updateScreenOverlay / homography.ts) -- any size works as long as it's 16:9
 // to match the screen, and bindScreenOverlay sizes the actual DOM element to
 // match. Corner order mirrors sessionBoards.ts's featuredScreenCorners():
-// bottom-left, bottom-right, top-right, top-left.
+// world bottom-left, bottom-right, top-right, top-left -- but mirrored left↔
+// right here, because a player facing wallN (forward ≈ -Z) has +X on their
+// LEFT, not their right (see localPlayer.ts's strafe vector,
+// right = (fwd.z, 0, -fwd.x): at fwd=(0,0,-1) that's (-1,0,0)). Without this
+// swap the embed rendered as a mirror image (reported 2026-10-07).
 const OVERLAY_BASE_W = 640;
 const OVERLAY_BASE_H = 360;
 const OVERLAY_REF_CORNERS: Point[] = [
-  { x: 0, y: OVERLAY_BASE_H },
   { x: OVERLAY_BASE_W, y: OVERLAY_BASE_H },
-  { x: OVERLAY_BASE_W, y: 0 },
+  { x: 0, y: OVERLAY_BASE_H },
   { x: 0, y: 0 },
+  { x: OVERLAY_BASE_W, y: 0 },
 ];
 
 /** What the UI needs to announce a new round. */
