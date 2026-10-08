@@ -1,150 +1,188 @@
 # engChatRoom
 
-類 **SpotVirtual** 的 3D 英語口說練習虛擬咖啡廳。使用者操控 avatar 在 3D 咖啡廳走動，
-走進「對話區」或靠近他人就自動開啟語音／視訊，模擬真實的語言交換練習。
+*[繁體中文](README.zh-TW.md)*
 
-- **前端** `web/` — Vite + React + TypeScript + Babylon.js 8
-- **realtime 伺服器** `realtime/` — Go（`coder/websocket`），權威 transform 廣播
-- **媒體** — LiveKit Cloud（Phase 1 起）
-- 完整設計與進度見 [`docs/PLAN.md`](docs/PLAN.md)（活文件）。
+A 3D virtual cafe for English-speaking practice, in the style of **SpotVirtual**. Users control
+an avatar walking around a 3D cafe; walking into a "conversation zone" or near another avatar
+automatically opens voice/video, simulating real language-exchange practice.
 
-目前進度：**Phase 0（3D 骨架）**— 能走、能看到別人。
+- **Frontend** `web/` — Vite + React + TypeScript + Babylon.js 8
+- **Realtime server** `realtime/` — Go (`coder/websocket`), authoritative transform broadcast
+- **Media** — LiveKit Cloud (since Phase 1)
+- Full design notes and progress log: [`docs/PLAN.md`](docs/PLAN.md) (a living document, in Chinese).
+
+Current status: **Phase 0 and Phase 1 are complete; Phase 2 (productization + language-exchange
+session mode + early-stage AI) is well underway** — see the Roadmap below and `docs/PLAN.md` for
+details.
 
 ---
 
-## 需求
+## Requirements
 
-| 工具 | 版本 |
+| Tool | Version |
 |---|---|
-| Node.js | ≥ 20（開發用 22） |
-| pnpm | 9.12.3（`corepack enable` 即可） |
+| Node.js | ≥ 20 (22 used for development) |
+| pnpm | 9.12.3 (`corepack enable` is enough) |
 | Go | ≥ 1.21 |
 
-## 首次設定
+## First-time setup
 
 ```bash
 pnpm install
 ```
 
-Go 依賴在第一次 `go run` / `go test` 時自動下載。
+Go dependencies download automatically on the first `go run` / `go test`.
 
-## 本機啟動
+## Running locally
 
-開兩個終端機：
+Open two terminals:
 
 ```bash
-# 終端 1 — realtime 伺服器（預設 :8787）
+# Terminal 1 — realtime server (default :8787)
 cd realtime
 go run ./cmd/server
 ```
 
 ```bash
-# 終端 2 — 前端 dev server（預設 :5173，被佔用會自動換埠）
+# Terminal 2 — frontend dev server (default :5173, picks another port automatically if taken)
 pnpm dev
 ```
 
-瀏覽器開 `http://localhost:5173`。**開兩個分頁**即可看到彼此的 avatar。
+Open `http://localhost:5173` in a browser. **Open two tabs** to see each other's avatars.
 
-### 環境變數
+### Environment variables
 
-| 變數 | 預設 | 說明 |
+| Variable | Default | Description |
 |---|---|---|
-| `ADDR` | `:8787` | realtime 伺服器監聽位址 |
-| `TICK_RATE` | `15` | 每秒 snapshot 廣播次數 |
-| `VITE_REALTIME_URL` | `ws://localhost:8787/ws` | 前端連線的 WebSocket 位址（放 `web/.env.local`） |
+| `ADDR` | `:8787` | realtime server listen address |
+| `TICK_RATE` | `15` | snapshot broadcasts per second |
+| `VITE_REALTIME_URL` | `ws://localhost:8787/ws` | WebSocket URL the frontend connects to (put it in `web/.env.local`) |
 
-### LiveKit（語音／視訊，Phase 1）
+### LiveKit (voice/video, Phase 1)
 
-1. 到 [cloud.livekit.io](https://cloud.livekit.io) 建立專案，拿 Websocket URL + API Key + API Secret。
-2. `cp realtime/.env.example realtime/.env`，填入這三個值（`.env` 已 gitignore，不會進版控）。
-3. 啟動 realtime 伺服器時如果印出 `LiveKit token endpoint enabled at /token` 代表接上了；
-   沒設環境變數也能正常跑，只是 `/token` 會停用（訊息裡會說明）。
+1. Create a project at [cloud.livekit.io](https://cloud.livekit.io) and get the Websocket URL + API
+   Key + API Secret.
+2. `cp realtime/.env.example realtime/.env` and fill in those three values (`.env` is gitignored,
+   never committed).
+3. If the realtime server prints `LiveKit token endpoint enabled at /token`, it's wired up; without
+   those env vars the server still runs fine, just with `/token` disabled (the startup message
+   explains this).
 
-### 語言交換活動模式（主持人）
+### Language-exchange session mode (host)
 
-咖啡廳的核心玩法：主持人開一場活動，分成 N 輪，每輪有計時和一個話題，**每輪結束會提示坐黑椅的人
-可以換到下一桌**（最後一桌環繞回第 1 桌；桌數以目前場景實際配置為準，不是寫死的）認識新夥伴——
-但**只是提示，不會強制移動**，換不換、什麼時候換由參加者自己決定（自己點椅子走過去）；白椅的人
-不受影響。
+The cafe's core activity: a host starts a session split into N rounds, each with a timer and a
+topic. **At the end of each round, people sitting in black chairs are prompted that they can move
+to the next table** (wrapping from the last table back to table 1; the table count follows
+whatever the scene is actually configured with, it isn't hardcoded) to meet someone new — but
+it's **only a prompt, never a forced move**; whether and when to move is entirely up to each
+participant (they walk over and click a chair themselves). People in white chairs are unaffected.
 
-1. `realtime/.env` 加一行 `HOST_KEY=隨便取一個只有你知道的字串`（沒設就沒人能當主持人），重啟 server。
-2. 瀏覽器右下角 **🎓 主持** → 填入同一個金鑰 → 設定輪數、每輪幾分鐘、話題（每行一個，留空用內建話題；
-   話題比輪數少會循環使用）→ **▶ 開始活動**。金鑰只存在你自己瀏覽器的 localStorage。
-   話題欄位每一行支援三種寫法：
-   - 打一句跟內建話題**完全一樣**的英文句子（大小寫不分）→ 自動帶出內建的文章＋4 個追問問題。
-   - 打任何其他文字 → 當成自訂標題，沒有文章／問題。
-   - 用半形 `|` 自己組一整行 → `標題 | 文章 | 連結(可省略) | 問題 | 問題…`（最多留 5 個問題），
-     完全自訂內容；其中一段打 `http://` 或 `https://` 開頭的網址會被當成可嵌入的連結（例如
-     YouTube 影片），不算進問題裡——點開燈箱會用 iframe 嵌入，但大部分非 YouTube 網站基於安全性
-     設定會拒絕被嵌入，不保證一定顯示得出來。
-3. 活動中畫面上方會顯示「第 N / M 輪 · 倒數 · 話題」；每輪換輪時，坐黑椅的人會看到「可以移到桌 N」的
-   通知（自行決定要不要移動）。主持人可以 **⏭ 下一輪 / ＋1、＋5 分鐘 / ⏹ 結束活動**，還可以在
-   **大看板顯示** 選一個 TOPIC 讓它呈現在北牆的大螢幕上（見下方第 5 點），點「清空」取消。
-4. 中途才進來的人也會看到目前進度（倒數以 server 時間為準，不受各人電腦時鐘影響）。
-5. 除了畫面上方的 HUD，咖啡廳還有幾塊實體看板：西牆（窄邊）上四塊——**黑板 1/2/3** 是主持人設定的
-   前三個話題縮圖（不隨輪次變動），**黑板 4** 是純計時器（沒有活動時顯示 `00:00`）；北牆中央有一座
-   **大螢幕**，主持人可以把黑板 1/2/3 其中一個的內容放上去，當作全場目前討論主題的焦點。如果那個
-   話題有附嵌入連結（YouTube 影片或可嵌入的網頁），大螢幕上會直接播放/顯示；大部分非 YouTube 網站
-   會拒絕被嵌入，那種情況只能點「🔍 內容」看文字。四塊小板＋大螢幕**都能點擊**彈出放大燈箱。
+1. Add a line to `realtime/.env`: `HOST_KEY=some string only you know` (without it, nobody can
+   become host), then restart the server.
+2. In the browser, bottom-right **🎓 Host** → enter that same key → set the round count, minutes
+   per round, and topics (one per line; leave blank to use the built-in topics; if there are fewer
+   topics than rounds they repeat) → **▶ Start session**. The key is only ever stored in your own
+   browser's localStorage.
+   Each topic line supports three formats:
+   - Type a sentence that **exactly matches** a built-in topic (case-insensitive) → its built-in
+     article and 4 follow-up questions are pulled in automatically.
+   - Type anything else → used as a custom title with no article/questions.
+   - Build a line yourself with `|` → `title | article | link (optional) | question | question…`
+     (up to 5 questions), fully custom content; a segment starting with `http://` or `https://` is
+     treated as an embeddable link (e.g. a YouTube video) and doesn't count as a question — the
+     lightbox embeds it via iframe, though most non-YouTube sites refuse to be embedded for
+     security reasons, so display isn't guaranteed.
+3. During a session, the top of the screen shows "Round N / M · countdown · topic"; whenever a
+   round advances, people sitting in black chairs see a "you can move to table N" notice (entirely
+   their own call). The host can **⏭ next round / +1, +5 minutes / ⏹ end session**, and can also
+   use **Feature on big screen** to pick one of the TOPIC cards to show on the big screen on the
+   north wall (see point 5 below); "Clear" cancels it.
+4. Anyone who joins mid-session sees the current progress too (the countdown is driven by server
+   time, unaffected by each person's own clock).
+5. Besides the HUD at the top, the cafe has a few physical boards: four on the west wall (the short
+   wall) — **blackboards 1/2/3** are thumbnails of the host's first three topics (they don't change
+   with the round), **blackboard 4** is a pure countdown timer (shows `00:00` when no session is
+   running); the north wall has a **big screen** in the middle, where the host can put the content
+   of any of blackboards 1/2/3 as the room's current focal topic. If that topic has an embedded
+   link (a YouTube video or an embeddable page), it plays/displays directly on the big screen;
+   most non-YouTube sites refuse to be embedded, in which case only the "🔍 Content" text view is
+   available. All four small boards and the big screen **are clickable**, opening an enlarged
+   lightbox.
 
-沒有帳號系統前，「主持人」就是「知道 `HOST_KEY` 的人」；同一條連線猜錯 5 次金鑰會被擋，重新整理才能再試。
+Until there's an account system, being "host" just means "knowing the `HOST_KEY`"; the same
+connection gets locked out after 5 wrong guesses and has to refresh to try again.
 
-### 狀態 / Emote / 舉手
+### Status / Emotes / Raise hand
 
-畫面下方中間的小工具列，不需要 LiveKit、不需要任何設定：
+A small toolbar at the bottom-center of the screen, needing no LiveKit or setup at all:
 
-- **狀態下拉選單**：🟢 有空聊天 / 📅 開會中 / 🍔 用餐中 / 🎯 專注中——別人會在你頭上看到對應圖示
-  （「有空聊天」是預設值，不特別顯示，避免大家頭上都掛著圖示很吵）。
-- **👋👏❤️😂 emote**：點一下，你的 avatar 頭上會冒出對應表情、往上飄、淡出（約 2 秒），大家都看得到。
-- **✋ 舉手**：切換式，會一直顯示在頭上直到你自己按掉。
+- **Status dropdown**: 🟢 Free to chat / 📅 In a meeting / 🍔 Eating / 🎯 Focused — others see the
+  matching icon above your head ("Free to chat" is the default and isn't shown specially, so the
+  room isn't cluttered with icons over everyone's head).
+- **👋👏❤️😂 emotes**: click one and your avatar pops the matching icon above its head, which
+  floats up and fades out (~2 seconds), visible to everyone.
+- **✋ Raise hand**: a toggle, stays shown above your head until you turn it off yourself.
 
-目前的 avatar 還是佔位膠囊沒有骨架，所以狀態/emote 都是畫在頭上的一個小圖示，不是真的動作動畫。
+Avatars are still placeholder capsules with no skeleton, so status/emotes are drawn as a small
+icon above the head rather than an actual animation.
 
-### 沙發 / 廣播區
+### Sofas / broadcast zone
 
-- 西牆（看板牆）那邊有幾張三人沙發，點擊坐下跟桌椅一樣（再點一次站起）；沒有特別的分組機制——
-  語音本來就是依 avatar 距離調音量，坐在同一張沙發上自然就在全音量範圍內，等於可以一起聊天。
-- 西牆開放區有一塊紫色地板區塊是**廣播區**（長方形）：站進去之後，你的聲音會**無視距離、無視
-  別人開的耳機模式**，讓房間裡所有人都聽到（適合主持人宣布事情用）；離開區塊就恢復正常的距離
-  音量。站在裡面時畫面上方會顯示「📢 正在廣播給全場」提示。
-- 桌椅/沙發/廣播區的確切位置、數量還在持續調整中，細節以 `web/src/engine/environment.ts`
-  目前的常數為準。
+- There are a few 3-seat sofas along the west wall (the board wall); click to sit down the same way
+  as with table chairs (click again to stand up). There's no special grouping mechanism — voice
+  volume is already distance-based, so sitting on the same sofa naturally keeps everyone within
+  full-volume range, which amounts to being able to chat together.
+- There's a purple floor area (a rectangle) in the open space along the west wall — the
+  **broadcast zone**: stepping into it makes your voice heard by everyone in the room **regardless
+  of distance or anyone's headphones mode** (handy for a host making an announcement); leaving it
+  restores normal distance-based volume. While standing in it, the screen shows a "📢 Broadcasting
+  to everyone" indicator.
+- The exact position/count of tables, chairs, sofas and the broadcast zone is still being tuned;
+  the current constants in `web/src/engine/environment.ts` are the source of truth.
 
-### 聊天記錄持久化（Postgres，選用）
+### Chat history persistence (Postgres, optional)
 
-沒設定也完全能跑，聊天照樣即時互通，只是重啟後歷史會消失、新加入的人看不到之前的對話。
+Works fine without it — chat still works live, it just loses history on restart, and anyone
+joining later won't see earlier messages.
 
 1. `docker compose -f infra/docker-compose.yml up -d`
-2. `realtime/.env` 加一行：
+2. Add a line to `realtime/.env`:
    ```
    DATABASE_URL=postgres://engchatroom:engchatroom@localhost:5432/engchatroom?sslmode=disable
    ```
-3. 啟動 realtime 伺服器時印出 `chat persistence enabled (Postgres)` 代表接上了；資料表
-   由伺服器自己在啟動時建立（`Store.Migrate`），不用額外跑 migration。
+3. If the realtime server prints `chat persistence enabled (Postgres)`, it's wired up; the server
+   creates its own tables on startup (`Store.Migrate`), no separate migration step needed.
 
-## 操作
+## Controls
 
-WASD／方向鍵移動 · 點地板走過去（會自動繞開桌子，navmesh 尋路）· 點椅子坐下（再點一次站起）·
-拖曳旋轉鏡頭 · 滾輪縮放 · `V` 切換第一／第三人稱。
+WASD / arrow keys to move · click the floor to walk there (automatically routes around tables via
+navmesh pathfinding) · click a chair to sit (click again to stand) · drag to orbit the camera ·
+scroll to zoom · `V` to toggle first/third person.
 
-HUD 右上角（LiveKit 連上後才能點，耳機模式除外）：
-- 🎤 麥克風開關
-- 📷 鏡頭開關 — 開啟後對方會在你的 avatar 上方看到一塊視訊畫面（billboard，永遠面向鏡頭）
-- 🖥️ 螢幕分享 — 跳瀏覽器的分享畫面選擇視窗；一樣顯示在你的 avatar 上方（跟鏡頭共用同一塊
-  billboard，同時開兩個的話畫面優先顯示螢幕分享）；用瀏覽器原生的「停止共用」列結束也會同步
-  更新按鈕狀態
-- 🎧 耳機模式 — 開啟後不管距離都聽不到任何人（不需要 LiveKit 已連線就能切）
-- ⚙️ 裝置 — 選麥克風／鏡頭來源（裝置名稱要先允許過一次權限才看得到，瀏覽器隱私限制）
+Top-right HUD (clickable once LiveKit is connected, except headphones mode):
+- 🎤 microphone toggle
+- 📷 camera toggle — once on, others see a video plane above your avatar (a billboard that always
+  faces the camera)
+- 🖥️ screen share — opens the browser's share picker; also shown above your avatar (sharing the
+  same billboard as the camera feed; if both are on, screen share takes priority); stopping via
+  the browser's native "stop sharing" bar also updates the button state
+- 🎧 headphones mode — once on, you can't hear anyone regardless of distance (can be toggled even
+  without LiveKit connected)
+- ⚙️ devices — choose a microphone/camera source (device names only show up after you've granted
+  permission once, a browser privacy restriction)
 
-語音走 LiveKit：進房自動連線（不會自動開麥/開鏡頭，避免一進頁面就跳權限請求），同房間所有人的
-聲音會依 avatar 距離調整音量（3m 內全音量、10m 外靜音，耳機模式時無視距離全部靜音）。
-沒設 `realtime/.env` 時 HUD 會顯示「語音未設定」，其餘功能不受影響。
+Voice runs over LiveKit: it connects automatically on joining the room (it won't auto-enable your
+mic/camera, to avoid a permission prompt the moment the page loads); everyone's volume in the same
+room is adjusted by avatar distance (full volume within 3m, silent beyond 10m; headphones mode
+mutes everyone regardless of distance).
+If `realtime/.env` isn't configured, the HUD shows "Voice not configured"; everything else still
+works.
 
 ---
 
-## 開發指令
+## Development commands
 
-### web（在 repo 根目錄）
+### web (from the repo root)
 
 ```bash
 pnpm dev          # dev server
@@ -159,38 +197,39 @@ pnpm --filter web test   # vitest run
 ```bash
 cd realtime
 go run ./cmd/server
-go test ./...     # internal/store 的 Postgres 測試沒設 DATABASE_URL_TEST 會自動跳過
+go test ./...     # internal/store's Postgres tests auto-skip if DATABASE_URL_TEST isn't set
 go vet ./...
-gofmt -l .        # 應無輸出
+gofmt -l .        # should print nothing
 ```
 
 ---
 
-## 專案結構
+## Project structure
 
 ```
 engChatRoom/
   web/
-    src/engine/   # Babylon 場景、攝影機、角色控制、插值、render-on-demand、視訊 billboard
-    src/media/    # livekit-client 封裝：連線、麥克風/鏡頭/螢幕分享、proximity 音量
-    src/net/      # WebSocket client + LiveKit token fetch + 對齊 protocol 的型別
-    src/ui/       # React overlay（HUD、聊天、裝置選單）
+    src/engine/   # Babylon scene, camera, character control, interpolation, render-on-demand, video billboards
+    src/media/    # livekit-client wrapper: connecting, mic/camera/screen-share, proximity volume
+    src/net/      # WebSocket client + LiveKit token fetch + types matching the protocol
+    src/ui/       # React overlay (HUD, chat, device picker)
   realtime/
-    cmd/server/           # main：路由 + tick loop 啟動
-    internal/game/        # room manager、client、tick、配色、聊天廣播+持久化
-    internal/event/       # 語言交換活動的輪次狀態機（純函式式，時間由呼叫者傳入，好測試）
-    internal/livekit/     # LiveKit join token 簽發（POST /token）
-    internal/store/       # Postgres：聊天記錄持久化
-    internal/protocol/    # wire 訊息定義（與 web/src/net/types.ts 同步）
-  infra/docker-compose.yml  # 本機 Postgres
-  docs/PLAN.md    # 技術分析與分階段 Roadmap（活文件）
+    cmd/server/           # main: routing + tick loop startup
+    internal/game/        # room manager, client, tick, colors, chat broadcast + persistence
+    internal/event/       # language-exchange session round state machine (pure functions, caller passes time in, easy to test)
+    internal/livekit/     # LiveKit join token issuing (POST /token)
+    internal/store/       # Postgres: chat history persistence
+    internal/protocol/    # wire message definitions (kept in sync with web/src/net/types.ts)
+  infra/docker-compose.yml  # local Postgres
+  docs/PLAN.md    # technical analysis and phased roadmap (a living document, in Chinese)
 ```
 
-## Roadmap（摘要）
+## Roadmap (summary)
 
-- **Phase 0** — 3D 骨架：能走、能看到別人 ← 現在
-- **Phase 1** — Proximity 媒體（LiveKit）+ 坐下 + 房間文字聊天
-- **Phase 2** — 產品化 + 語言交換活動模式 + 初階 AI（AI Host / 規則 NPC / 召喚夥伴）
-- **Phase 3** — 擴增（interest management、多實例）+ 進階 AI（語音）+ 打磨
+- **Phase 0** — 3D skeleton: walking around, seeing others ← done
+- **Phase 1** — Proximity media (LiveKit) + sitting down + room text chat ← done
+- **Phase 2** — Productization + language-exchange session mode + early-stage AI (AI host / rules
+  NPC / summonable AI partner) ← in progress
+- **Phase 3** — Scaling (interest management, multiple instances) + advanced AI (voice) + polish
 
-細節見 [`docs/PLAN.md`](docs/PLAN.md)。
+See [`docs/PLAN.md`](docs/PLAN.md) for details (Chinese only — it's the project's working log).
